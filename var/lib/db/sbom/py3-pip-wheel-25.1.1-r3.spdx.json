@@ -1,0 +1,87 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-py3-pip-wheel-25.1.1-r3",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-06-27T20:43:32Z",
+    "creators": [
+      "Tool: melange (v0.26.13+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/9f202c4cb5eab3700d251b79906f05f9",
+  "documentDescribes": [
+    "SPDXRef-Package-py3-pip-wheel-25.1.1-r3"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-py3-pip-wheel-25.1.1-r3",
+      "name": "py3-pip-wheel",
+      "versionInfo": "25.1.1-r3",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/py3-pip-wheel@25.1.1-r3?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-py3-pip.yaml-bffa01d1079910a30fb5c72e2cdf6ed8c0cceb8c",
+      "name": "py3-pip.yaml",
+      "versionInfo": "bffa01d1079910a30fb5c72e2cdf6ed8c0cceb8c",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@bffa01d1079910a30fb5c72e2cdf6ed8c0cceb8c#py3-pip.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-github.com-pypa-pip-25.1.1-01857ef79f59a98db592bacb6e7b48f354528c80-0",
+      "name": "pip",
+      "versionInfo": "25.1.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "downloadLocation": "https://github.com/pypa/pip/archive/01857ef79f59a98db592bacb6e7b48f354528c80.tar.gz",
+      "originator": "Organization: Pypa",
+      "supplier": "Organization: Pypa",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/pypa/pip@25.1.1",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-py3-pip-wheel-25.1.1-r3",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-py3-pip.yaml-bffa01d1079910a30fb5c72e2cdf6ed8c0cceb8c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-py3-pip-wheel-25.1.1-r3",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-github.com-pypa-pip-25.1.1-01857ef79f59a98db592bacb6e7b48f354528c80-0"
+    }
+  ]
+}

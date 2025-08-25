@@ -1,0 +1,98 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-python-3.13-3.13.5-r2",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-07-01T21:40:20Z",
+    "creators": [
+      "Tool: melange (v0.28.0+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/3948492b2eeab809e67bfdbdb43b2f09",
+  "documentDescribes": [
+    "SPDXRef-Package-python-3.13-3.13.5-r2"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-OperatingSystem",
+      "name": "wolfi",
+      "versionInfo": "20230201",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "description": "Operating System",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "OPERATING-SYSTEM"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-python-3.13-3.13.5-r2",
+      "name": "python-3.13",
+      "versionInfo": "3.13.5-r2",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "PSF-2.0",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/python-3.13@3.13.5-r2?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-python-3.13.yaml-1cc75b6b1200405214b8f958eb6223bde6dca16f",
+      "name": "python-3.13.yaml",
+      "versionInfo": "1cc75b6b1200405214b8f958eb6223bde6dca16f",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@1cc75b6b1200405214b8f958eb6223bde6dca16f#python-3.13.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-github.com-python-cpython.git-v3.13.5-6cb20a219a860eaf687b2d968b41c480c7461909-0",
+      "name": "cpython",
+      "versionInfo": "v3.13.5",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "PSF-2.0",
+      "downloadLocation": "https://github.com/python/cpython/archive/6cb20a219a860eaf687b2d968b41c480c7461909.tar.gz",
+      "originator": "Organization: Python",
+      "supplier": "Organization: Python",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/python/cpython@v3.13.5",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-python-3.13-3.13.5-r2",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-python-3.13.yaml-1cc75b6b1200405214b8f958eb6223bde6dca16f"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-python-3.13-3.13.5-r2",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-github.com-python-cpython.git-v3.13.5-6cb20a219a860eaf687b2d968b41c480c7461909-0"
+    }
+  ]
+}

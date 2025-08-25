@@ -1,0 +1,93 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-ncurses-6.5_p20250621-r0",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-06-25T14:27:15Z",
+    "creators": [
+      "Tool: melange (v0.26.13+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/b03ba3bfbe6e2cbfb40a4d37a9e76323",
+  "documentDescribes": [
+    "SPDXRef-Package-ncurses-6.5C95p20250621-r0"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-ncurses-6.5C95p20250621-r0",
+      "name": "ncurses",
+      "versionInfo": "6.5_p20250621-r0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/ncurses@6.5_p20250621-r0?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-ncurses.yaml-382ffa7474e5975f23b19a851aad2a89528c8d08",
+      "name": "ncurses.yaml",
+      "versionInfo": "382ffa7474e5975f23b19a851aad2a89528c8d08",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@382ffa7474e5975f23b19a851aad2a89528c8d08#ncurses.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-ncurses-6.5C95p20250621-0",
+      "name": "ncurses",
+      "versionInfo": "6.5_p20250621",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "https://invisible-mirror.net/archives/ncurses/current/ncurses-6.5-20250621.tgz",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "checksums": [
+        {
+          "algorithm": "SHA512",
+          "checksumValue": "1b665749b822133e7166c21e44e0cf0d94766a7ed4f96a6138de43c46c8ce85ed0c5d5230c050103de3830e7d2fc35c283262d30990b9de30851d1f999525b85"
+        }
+      ],
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:generic/ncurses@6.5_p20250621?checksum=sha512%3A1b665749b822133e7166c21e44e0cf0d94766a7ed4f96a6138de43c46c8ce85ed0c5d5230c050103de3830e7d2fc35c283262d30990b9de30851d1f999525b85\u0026download_url=https%3A%2F%2Finvisible-mirror.net%2Farchives%2Fncurses%2Fcurrent%2Fncurses-6.5-20250621.tgz",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-ncurses-6.5C95p20250621-r0",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-ncurses.yaml-382ffa7474e5975f23b19a851aad2a89528c8d08"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-ncurses-6.5C95p20250621-r0",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-ncurses-6.5C95p20250621-0"
+    }
+  ]
+}

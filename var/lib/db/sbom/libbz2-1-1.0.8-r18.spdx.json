@@ -1,0 +1,87 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-libbz2-1-1.0.8-r18",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-06-17T13:28:42Z",
+    "creators": [
+      "Tool: melange (v0.26.12+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/d00ed4c12aeac56111c89fc12cc12e6b",
+  "documentDescribes": [
+    "SPDXRef-Package-libbz2-1-1.0.8-r18"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-libbz2-1-1.0.8-r18",
+      "name": "libbz2-1",
+      "versionInfo": "1.0.8-r18",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0 AND MIT",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/libbz2-1@1.0.8-r18?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-bzip2.yaml-107886bea3a9041045799fd2d401a41e81e08327",
+      "name": "bzip2.yaml",
+      "versionInfo": "107886bea3a9041045799fd2d401a41e81e08327",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@107886bea3a9041045799fd2d401a41e81e08327#bzip2.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-sourceware.org-git-bzip2.git-bzip2-1.0.8-6a8690fc8d26c815e798c588f796eabe9d684cf0-0",
+      "name": "git/bzip2",
+      "versionInfo": "bzip2-1.0.8",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0 AND MIT",
+      "downloadLocation": "https://tarballs.cgr.dev/g/bd9e4cde2b52db644da8ff7b19a2e89df1ff408230201c86e08456c98ef2fc12-6a8690fc8d26c815e798c588f796eabe9d684cf0.tar.gz",
+      "originator": "Organization: ",
+      "supplier": "Organization: ",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:generic/git%2Fbzip2@bzip2-1.0.8?vcs_url=git%2Bhttps%3A%2F%2Fsourceware.org%2Fgit%2Fbzip2.git%406a8690fc8d26c815e798c588f796eabe9d684cf0",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-libbz2-1-1.0.8-r18",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-bzip2.yaml-107886bea3a9041045799fd2d401a41e81e08327"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-libbz2-1-1.0.8-r18",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-sourceware.org-git-bzip2.git-bzip2-1.0.8-6a8690fc8d26c815e798c588f796eabe9d684cf0-0"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-libssl3-3.5.1-r0",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-07-02T16:17:49Z",
+    "creators": [
+      "Tool: melange (v0.28.0+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/324b67c3535473fcc7c9bb24683a70d8",
+  "documentDescribes": [
+    "SPDXRef-Package-libssl3-3.5.1-r0"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-OperatingSystem",
+      "name": "wolfi",
+      "versionInfo": "20230201",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "description": "Operating System",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "OPERATING-SYSTEM"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-libssl3-3.5.1-r0",
+      "name": "libssl3",
+      "versionInfo": "3.5.1-r0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/libssl3@3.5.1-r0?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-openssl.yaml-0011697dff04cadfdc3f9026db89f13b8b0ca23d",
+      "name": "openssl.yaml",
+      "versionInfo": "0011697dff04cadfdc3f9026db89f13b8b0ca23d",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@0011697dff04cadfdc3f9026db89f13b8b0ca23d#openssl.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-github.com-openssl-openssl-openssl-3.5.1-aea7aaf2abb04789f5868cbabec406ea43aa84bf-0",
+      "name": "openssl",
+      "versionInfo": "openssl-3.5.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "downloadLocation": "https://github.com/openssl/openssl/archive/aea7aaf2abb04789f5868cbabec406ea43aa84bf.tar.gz",
+      "originator": "Organization: Openssl",
+      "supplier": "Organization: Openssl",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/openssl/openssl@openssl-3.5.1",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-libssl3-3.5.1-r0",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-openssl.yaml-0011697dff04cadfdc3f9026db89f13b8b0ca23d"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-libssl3-3.5.1-r0",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-github.com-openssl-openssl-openssl-3.5.1-aea7aaf2abb04789f5868cbabec406ea43aa84bf-0"
+    }
+  ]
+}

@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}
+    Chats - {{ app_settings.app_title }}
+{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="/static/css/chats.css">
+    <style>
+        /* Styles for conversation checkboxes */
+        .conversation-item {
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .conversation-checkbox {
+            cursor: pointer;
+            min-width: 18px;
+            min-height: 18px;
+            display: none; /* Hide checkboxes by default */
+        }
+        
+        /* Show checkboxes when in selection mode */
+        .selection-mode .conversation-checkbox {
+            display: block;
+        }
+        
+        /* Ensure the delete button is properly styled */
+        #delete-selected-btn {
+            transition: all 0.3s ease;
+        }
+        
+        /* Add some padding to the left when in selection mode */
+        .selection-mode .conversation-item {
+            padding-left: 0.5rem;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0" style="height: calc(100vh - {% if app_settings.classification_banner_enabled and app_settings.classification_banner_text %}106px{% else %}66px{% endif %});">
+    <div id="split-container" class="h-100 w-100">
+
+        <div id="left-pane" class="d-flex flex-column h-100">
+            <div class="d-flex justify-content-between align-items-center p-3 border-bottom flex-shrink-0">
+                <h5>Conversations</h5>
+                <div class="d-flex align-items-center">
+                    <button class="btn btn-danger btn-sm me-2" id="delete-selected-btn" style="display: none;" title="Delete selected conversations">
+                        <i class="bi bi-trash"></i> <span class="d-none d-md-inline"></span>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" id="dock-toggle-btn" title="Toggle Docked Sidebar">
+                        <i class="bi bi-layout-sidebar-inset"></i>
+                    </button>
+                    <button class="btn btn-primary btn-sm ms-2" id="new-conversation-btn" title="Start a new chat">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="conversations-list" class="list-group list-group-flush overflow-auto flex-grow-1">
+                <div class="text-center p-3 text-muted">Loading conversations...</div>
+            </div>
+        </div>
+
+        <div id="right-pane" class="d-flex flex-column h-100 chat-container">
+             <div class="p-3 border-bottom d-flex align-items-center justify-content-between flex-shrink-0">
+                <div class="d-flex flex-column">
+                    <h5 id="current-conversation-title" class="mb-0">
+                        Select or start a conversation
+                    </h5>
+                    <div id="current-conversation-classifications" class="mt-1">
+                    </div>
+                </div>
+            </div>
+
+            <div id="chatbox" class="flex-grow-1 p-3" style="overflow-y: auto">
+                <!-- Chat messages will be dynamically loaded here -->
+            </div>
+
+            <div class="p-3 border-top flex-shrink-0">
+                
+                 <div class="d-flex align-items-center mb-2 flex-wrap gap-2">
+                    
+                    {% if settings.enable_image_generation %}
+                    <button
+                        id="image-generate-btn"
+                        class="btn btn-outline-secondary btn-sm search-btn"
+                        data-bs-toggle="tooltip" data-bs-placement="top" title="Generate images with AI"
+                    >
+                        <i class="bi bi-image"></i> <span class="search-btn-text d-none d-md-inline">Image</span>
+                    </button>
+                    {% endif %}
+                    {% if settings.enable_user_workspace or settings.enable_group_workspaces %}
+                    <button
+                        id="search-documents-btn"
+                        class="btn btn-outline-secondary btn-sm search-btn"
+                        data-bs-toggle="tooltip" data-bs-placement="top" title="Search workspaces"
+                    >
+                        <i class="bi bi-file-earmark-text"></i> <span class="search-btn-text d-none d-md-inline">Workspaces</span>
+                    </button>
+                    {% endif %}
+                    {% if settings.enable_web_search %}
+                    <button
+                        id="search-web-btn"
+                        class="btn btn-outline-secondary btn-sm search-btn"
+                        data-bs-toggle="tooltip" data-bs-placement="top" title="Search the web using Bing"
+                    >
+                        <i class="bi bi-globe"></i> <span class="search-btn-text d-none d-md-inline">Web</span>
+                    </button>
+                    {% endif %}
+                     <input type="file" id="file-input" accept=".txt,.pdf,.docx,.xlsx,.pptx,.html,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif,.md,.json,.csv" style="display: none"/>
+                     <button id="choose-file-btn" class="btn btn-outline-secondary btn-sm file-btn position-relative" data-bs-toggle="tooltip" data-bs-placement="top" title="Add a file to this conversation">
+                         <i class="bi bi-paperclip"></i> <span class="file-btn-text d-none d-md-inline">File</span>
+                         <span id="cancel-file-selection" class="position-absolute top-50 end-0 translate-middle-y me-1" style="display: none; cursor: pointer;" title="Cancel file selection">
+                             <i class="bi bi-x-circle-fill text-danger"></i>
+                         </span>
+                     </button>
+                     <button id="upload-btn" class="btn btn-secondary btn-sm" style="display: none">Add to Chat</button>
+                    {% if settings.enable_user_workspace or settings.enable_group_workspaces %}
+                    <button id="search-prompts-btn" class="btn btn-outline-secondary btn-sm search-btn" data-bs-toggle="tooltip" data-bs-placement="top" title="Select a saved prompt">
+                        <i class="bi bi-lightbulb"></i> <span class="search-btn-text d-none d-md-inline">Prompts</span>
+                    </button>
+                    {% endif %}
+                </div>
+
+                
+                {% if settings.enable_user_workspace or settings.enable_group_workspaces %}
+                <div id="search-documents-container" class="card p-2 mb-2" style="display: none; border-radius: 0.5rem;">
+                    
+                     <div class="d-flex flex-wrap align-items-end gap-2">
+                         <div class="flex-grow-1" style="min-width: 120px;">
+                             <label for="doc-scope-select" class="form-label mb-1 small text-muted">Scope</label>
+                             <select class="form-select form-select-sm" id="doc-scope-select">
+                                 <option value="all" selected>All</option>
+                                 <option value="personal">Personal</option>
+                                 <option value="group">Group</option>
+                             </select>
+                         </div>
+                             <div class="flex-grow-1" style="min-width: 200px;">
+                             <label for="document-select" class="form-label mb-1 small text-muted">Document</label>
+                             <div class="dropdown" id="document-dropdown">
+                                <button class="form-select form-select-sm d-flex justify-content-between align-items-center" 
+                                        type="button" 
+                                        id="document-dropdown-button" 
+                                        data-bs-toggle="dropdown" 
+                                        data-bs-auto-close="outside"
+                                        data-bs-display="static"
+                                        data-bs-offset="0,5"
+                                        aria-expanded="false">
+                                    <span class="selected-document-text">All Documents</span>
+                                    <i class="bi bi-chevron-down"></i>
+                                </button>
+                                <div class="dropdown-menu p-2" id="document-dropdown-menu" style="width: 400px;">
+                                    <div class="document-search-container mb-2">
+                                        <input type="text" class="form-control form-control-sm" placeholder="Search documents..." id="document-search-input">
+                                    </div>
+                                    <div class="dropdown-items-container" id="document-dropdown-items">
+                                        <!-- Documents will be populated here -->
+                                    </div>
+                                </div>
+                                <!-- Hidden select element for compatibility -->
+                                <select class="d-none" id="document-select"></select>
+                             </div>
+                         </div>
+                        {% if settings.enable_document_classification %}
+                        <div class="flex-grow-1 classification-container" style="max-width: 150px;">
+                             <label for="classification-control" class="form-label mb-1 small text-muted">Classification</label>
+                             <input type="text" id="classification-select" class="form-control form-control-sm" style="display: none;" readonly />
+                             <div class="dropdown" id="classification-multiselect-dropdown" style="display: none;">
+                                <button id="classification-dropdown-btn" class="btn btn-light btn-sm dropdown-toggle w-100 text-start" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                    {_ Placeholder _}
+                                </button>
+                                <ul class="dropdown-menu w-100" id="classification-dropdown-menu" style="max-height: 200px; overflow-y: auto;">
+                                    
+                                </ul>
+                             </div>
+                         </div>
+                        {% endif %}
+                     </div>
+                </div>
+                {% endif %}
+
+                
+                <div class="chat-input-container d-flex gap-2">
+                    <!-- Textarea takes up remaining space -->
+                     <textarea id="user-input" class="form-control flex-grow-1" placeholder="Type your message..." rows="1" style="resize: none;" oninput="this.style.height = ''; this.style.height = Math.min(this.scrollHeight, 200) + 'px';"></textarea>
+
+                    <!-- Prompt Selector Container (conditionally visible) -->
+                    {% if settings.enable_user_workspace or settings.enable_group_workspaces %}
+                     <div id="prompt-selection-container" class="flex-shrink-0" style="display: none;">
+                          <select class="form-select" id="prompt-select"></select>
+                          <!-- Optional: Add a small label above if needed -->
+                          <!-- <label for="prompt-select" class="form-label mb-1 small text-muted">Prompt</label> -->
+                     </div>
+                    {% endif %}
+
+                    <!-- Model selector -->
+                    <div class="flex-shrink-0">
+                        <label for="model-select" class="visually-hidden">Model</label>
+                        <select id="model-select" class="form-select">
+                        {% if settings.enable_gpt_apim %}
+                            {# when using APIM, azure_apim_gpt_deployment may be "dep1" or "dep1,dep2,…" #}
+                            {% set raw = settings.azure_apim_gpt_deployment or "" %}
+                            {% set apim_list = raw.split(',') %}
+                            {% for dep in apim_list %}
+                            {% set d = dep.strip() %}
+                            <option value="{{ d }}" {% if loop.first %}selected{% endif %}>
+                                {{ d }}
+                            </option>
+                            {% endfor %}
+                        {% else %}
+                            {# normal direct-Azure OpenAI flow: show whatever you fetched into settings.gpt_model.selected #}
+                            {% for model in settings.gpt_model.selected %}
+                            <option
+                                value="{{ model.deploymentName }}"
+                                {% if loop.first %}selected{% endif %}
+                            >
+                                {{ model.modelName }}
+                            </option>
+                            {% endfor %}
+                        {% endif %}
+                        </select>
+                    </div>
+
+                     <!-- Send Button (doesn't shrink) -->
+                     <button class="btn btn-primary flex-shrink-0" id="send-btn" title="Send Message">
+                          <i class="bi bi-send-fill"></i> <span class="d-none d-sm-inline">Send</span>
+                     </button>
+                </div>
+            </div>
+        </div> 
+    </div> 
+</div> 
+
+<!-- Modal for collecting thumbs-down reason -->
+<div class="modal fade" id="feedback-modal" tabindex="-1" aria-labelledby="feedbackModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form id="feedback-form">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="feedbackModalLabel">Optional: Provide a reason</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="feedback-ai-response-id" name="aiResponseId" />
+            <input type="hidden" id="feedback-conversation-id" name="conversationId" />
+            <input type="hidden" id="feedback-type" name="feedbackType" />
+            
+            <div class="mb-3">
+              <label for="feedback-reason" class="form-label">
+                Reason (optional)
+              </label>
+              <textarea 
+                class="form-control" 
+                id="feedback-reason"
+                name="reason"
+                rows="3"
+                placeholder="e.g., incomplete answer, incorrect details..."
+              ></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">Submit Feedback</button>
+          </div>
+        </div>
+      </form>
+    </div>
+</div>
+<div class="toast-container position-fixed top-0 end-0 p-3" id="toast-container"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Ensure global variables are still accessible if needed by older scripts
+    window.enableUserFeedback = "{{ enable_user_feedback }}";
+    window.activeGroupId = "{{ active_group_id }}";
+    window.enableEnhancedCitations = "{{ enable_enhanced_citations }}";
+    window.enable_document_classification = "{{ enable_document_classification }}";
+    window.classification_categories = JSON.parse('{{ settings.document_classification_categories|tojson(indent=None)|safe }}' || '[]');
+    if (!Array.isArray(window.classification_categories)) {
+        window.classification_categories = [];
+    }
+
+    // Layout related globals (can stay here or move entirely into chat-layout.js if preferred)
+    let splitInstance = null;
+    let currentLayout = 'split'; // Default layout
+    let currentSplitSizes = [25, 75]; // Default split percentage [left, right]
+    const USER_SETTINGS_KEY_LAYOUT = 'layoutPreference';
+    const USER_SETTINGS_KEY_SPLIT = 'splitSizesPreference';
+</script>
+<script src="{{ url_for('static', filename='js/chat/chat-global.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-layout.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-utils.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-messages.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-conversations.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-documents.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-prompts.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-input-actions.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-toast.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-feedback.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-citations.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-loading-indicator.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat/chat-onload.js') }}"></script>
+{% endblock %}

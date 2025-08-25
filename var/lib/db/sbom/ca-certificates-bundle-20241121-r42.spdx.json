@@ -1,0 +1,87 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-ca-certificates-bundle-20241121-r42",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-05-28T13:35:48Z",
+    "creators": [
+      "Tool: melange (v0.26.1+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/4d11c02cb56e21655925e4a5cd4342a0",
+  "documentDescribes": [
+    "SPDXRef-Package-ca-certificates-bundle-20241121-r42"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-ca-certificates-bundle-20241121-r42",
+      "name": "ca-certificates-bundle",
+      "versionInfo": "20241121-r42",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0 AND MIT",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/ca-certificates-bundle@20241121-r42?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-ca-certificates.yaml-cfbfc5c7500721e9c6e95221587c5d6943cddda5",
+      "name": "ca-certificates.yaml",
+      "versionInfo": "cfbfc5c7500721e9c6e95221587c5d6943cddda5",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@cfbfc5c7500721e9c6e95221587c5d6943cddda5#ca-certificates.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-gitlab.alpinelinux.org-alpine-ca-certificates-20241121-35fc750804a78979c392a151aee12ce69e618713-0",
+      "name": "ca-certificates",
+      "versionInfo": "20241121",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0 AND MIT",
+      "downloadLocation": "https://gitlab.alpinelinux.org/alpine/ca-certificates/-/archive/35fc750804a78979c392a151aee12ce69e618713/35fc750804a78979c392a151aee12ce69e618713.tar.gz",
+      "originator": "Organization: Alpine",
+      "supplier": "Organization: Alpine",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:generic/ca-certificates@20241121?vcs_url=git%2Bhttps%3A%2F%2Fgitlab.alpinelinux.org%2Falpine%2Fca-certificates%4035fc750804a78979c392a151aee12ce69e618713",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-ca-certificates-bundle-20241121-r42",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-ca-certificates.yaml-cfbfc5c7500721e9c6e95221587c5d6943cddda5"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-ca-certificates-bundle-20241121-r42",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-gitlab.alpinelinux.org-alpine-ca-certificates-20241121-35fc750804a78979c392a151aee12ce69e618713-0"
+    }
+  ]
+}

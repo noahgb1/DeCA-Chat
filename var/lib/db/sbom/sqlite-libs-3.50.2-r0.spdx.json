@@ -1,0 +1,93 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-sqlite-libs-3.50.2-r0",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-06-28T17:23:34Z",
+    "creators": [
+      "Tool: melange (v0.26.13+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/f0db6c06ceeab809d4fb6cd86464076f",
+  "documentDescribes": [
+    "SPDXRef-Package-sqlite-libs-3.50.2-r0"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-sqlite-libs-3.50.2-r0",
+      "name": "sqlite-libs",
+      "versionInfo": "3.50.2-r0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "blessing",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/sqlite-libs@3.50.2-r0?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-sqlite.yaml-7369c13c89944ebbccc12267e295fc1a125c74d6",
+      "name": "sqlite.yaml",
+      "versionInfo": "7369c13c89944ebbccc12267e295fc1a125c74d6",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@7369c13c89944ebbccc12267e295fc1a125c74d6#sqlite.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-sqlite-3.50.2-0",
+      "name": "sqlite",
+      "versionInfo": "3.50.2",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "https://www.sqlite.org/2025/sqlite-autoconf-3500200.tar.gz",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "84a616ffd31738e4590b65babb3a9e1ef9370f3638e36db220ee0e73f8ad2156"
+        }
+      ],
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:generic/sqlite@3.50.2?checksum=sha256%3A84a616ffd31738e4590b65babb3a9e1ef9370f3638e36db220ee0e73f8ad2156\u0026download_url=https%3A%2F%2Fwww.sqlite.org%2F2025%2Fsqlite-autoconf-3500200.tar.gz",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-sqlite-libs-3.50.2-r0",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-sqlite.yaml-7369c13c89944ebbccc12267e295fc1a125c74d6"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-sqlite-libs-3.50.2-r0",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-sqlite-3.50.2-0"
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-gdbm-1.25-r2",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-06-23T21:17:48Z",
+    "creators": [
+      "Tool: melange (v0.26.12+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/6f419e0d52a7af1937c4f9dccf7ab0c7",
+  "documentDescribes": [
+    "SPDXRef-Package-gdbm-1.25-r2"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-gdbm-1.25-r2",
+      "name": "gdbm",
+      "versionInfo": "1.25-r2",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/gdbm@1.25-r2?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-gdbm.yaml-2d42a3ffdc8ca4de62a3ca7508c479ac405d1393",
+      "name": "gdbm.yaml",
+      "versionInfo": "2d42a3ffdc8ca4de62a3ca7508c479ac405d1393",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@2d42a3ffdc8ca4de62a3ca7508c479ac405d1393#gdbm.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-gdbm-1.25-0",
+      "name": "gdbm",
+      "versionInfo": "1.25",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "https://ftpmirror.gnu.org/gnu/gdbm/gdbm-1.25.tar.gz",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "d02db3c5926ed877f8817b81cd1f92f53ef74ca8c6db543fbba0271b34f393ec"
+        }
+      ],
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:generic/gdbm@1.25?checksum=sha256%3Ad02db3c5926ed877f8817b81cd1f92f53ef74ca8c6db543fbba0271b34f393ec\u0026download_url=https%3A%2F%2Fftpmirror.gnu.org%2Fgnu%2Fgdbm%2Fgdbm-1.25.tar.gz",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-gdbm-1.25-r2",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-gdbm.yaml-2d42a3ffdc8ca4de62a3ca7508c479ac405d1393"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-gdbm-1.25-r2",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-gdbm-1.25-0"
+    }
+  ]
+}

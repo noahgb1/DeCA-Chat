@@ -1,0 +1,87 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-libffi-3.5.1-r0",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-06-10T22:23:22Z",
+    "creators": [
+      "Tool: melange (v0.26.7+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/324b67c3535473fcc7c9bb24683a70d8",
+  "documentDescribes": [
+    "SPDXRef-Package-libffi-3.5.1-r0"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-libffi-3.5.1-r0",
+      "name": "libffi",
+      "versionInfo": "3.5.1-r0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/libffi@3.5.1-r0?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-libffi.yaml-c22240815fb168dffc6211fdaae8f3d5470214ee",
+      "name": "libffi.yaml",
+      "versionInfo": "c22240815fb168dffc6211fdaae8f3d5470214ee",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@c22240815fb168dffc6211fdaae8f3d5470214ee#libffi.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-github.com-libffi-libffi.git-v3.5.1-e28a0d5b0708ade04979e2a1d5c2a2d3acc749ec-0",
+      "name": "libffi",
+      "versionInfo": "v3.5.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "downloadLocation": "https://github.com/libffi/libffi/archive/e28a0d5b0708ade04979e2a1d5c2a2d3acc749ec.tar.gz",
+      "originator": "Organization: Libffi",
+      "supplier": "Organization: Libffi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/libffi/libffi@v3.5.1",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-libffi-3.5.1-r0",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-libffi.yaml-c22240815fb168dffc6211fdaae8f3d5470214ee"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-libffi-3.5.1-r0",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-github.com-libffi-libffi.git-v3.5.1-e28a0d5b0708ade04979e2a1d5c2a2d3acc749ec-0"
+    }
+  ]
+}

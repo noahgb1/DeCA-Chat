@@ -1,0 +1,75 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-wolfi-baselayout-20230201-r22",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-07-08T00:25:32Z",
+    "creators": [
+      "Tool: melange (v0.29.0+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/635ba48bb76e356eb6c8e67e49eb289d",
+  "documentDescribes": [
+    "SPDXRef-Package-wolfi-baselayout-20230201-r22"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-OperatingSystem",
+      "name": "wolfi",
+      "versionInfo": "20230201",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "description": "Operating System",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "OPERATING-SYSTEM"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-wolfi-baselayout-20230201-r22",
+      "name": "wolfi-baselayout",
+      "versionInfo": "20230201-r22",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/wolfi-baselayout@20230201-r22?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-wolfi-baselayout.yaml-02b999ced429d99ef93d726508c5557c5bff07e4",
+      "name": "wolfi-baselayout.yaml",
+      "versionInfo": "02b999ced429d99ef93d726508c5557c5bff07e4",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@02b999ced429d99ef93d726508c5557c5bff07e4#wolfi-baselayout.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-wolfi-baselayout-20230201-r22",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-wolfi-baselayout.yaml-02b999ced429d99ef93d726508c5557c5bff07e4"
+    }
+  ]
+}

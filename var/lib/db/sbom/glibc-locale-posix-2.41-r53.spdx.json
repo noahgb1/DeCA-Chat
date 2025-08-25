@@ -1,0 +1,98 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-glibc-locale-posix-2.41-r53",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-07-02T16:06:06Z",
+    "creators": [
+      "Tool: melange (v0.28.0+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/c7ccfc78545473f8ed638a5dcfbce6d2",
+  "documentDescribes": [
+    "SPDXRef-Package-glibc-locale-posix-2.41-r53"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-OperatingSystem",
+      "name": "wolfi",
+      "versionInfo": "20230201",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "description": "Operating System",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "OPERATING-SYSTEM"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-glibc-locale-posix-2.41-r53",
+      "name": "glibc-locale-posix",
+      "versionInfo": "2.41-r53",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/glibc-locale-posix@2.41-r53?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-glibc.yaml-24e4462f4ea3e39b9c878f0ac1ba8e001583baeb",
+      "name": "glibc.yaml",
+      "versionInfo": "24e4462f4ea3e39b9c878f0ac1ba8e001583baeb",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@24e4462f4ea3e39b9c878f0ac1ba8e001583baeb#glibc.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-repo.or.cz-glibc.git-glibc-2.41-74f59e9271cbb4071671e5a474e7d4f1622b186f-0",
+      "name": "glibc",
+      "versionInfo": "glibc-2.41",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "downloadLocation": "https://tarballs.cgr.dev/g/1b11757d33424678ba2d9d6fbd9eb6293a7bfa196dca15a29af179af778c235d-74f59e9271cbb4071671e5a474e7d4f1622b186f.tar.gz",
+      "originator": "Organization: ",
+      "supplier": "Organization: ",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:generic/glibc@glibc-2.41?vcs_url=git%2Bhttps%3A%2F%2Frepo.or.cz%2Fglibc.git%4074f59e9271cbb4071671e5a474e7d4f1622b186f",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-glibc-locale-posix-2.41-r53",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-glibc.yaml-24e4462f4ea3e39b9c878f0ac1ba8e001583baeb"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-glibc-locale-posix-2.41-r53",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-repo.or.cz-glibc.git-glibc-2.41-74f59e9271cbb4071671e5a474e7d4f1622b186f-0"
+    }
+  ]
+}

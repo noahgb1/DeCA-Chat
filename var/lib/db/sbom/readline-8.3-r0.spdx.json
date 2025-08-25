@@ -1,0 +1,104 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-readline-8.3-r0",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-07-04T03:23:34Z",
+    "creators": [
+      "Tool: melange (v0.28.0+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/efe0a57500e34672abc0bbaf10d6e236",
+  "documentDescribes": [
+    "SPDXRef-Package-readline-8.3-r0"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-OperatingSystem",
+      "name": "wolfi",
+      "versionInfo": "20230201",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "description": "Operating System",
+      "downloadLocation": "NOASSERTION",
+      "primaryPackagePurpose": "OPERATING-SYSTEM"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-readline-8.3-r0",
+      "name": "readline",
+      "versionInfo": "8.3-r0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/readline@8.3-r0?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-readline.yaml-dad4a0d176d98261fef50a86c5b3f382bd0d264c",
+      "name": "readline.yaml",
+      "versionInfo": "dad4a0d176d98261fef50a86c5b3f382bd0d264c",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@dad4a0d176d98261fef50a86c5b3f382bd0d264c#readline.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-readline-8.3-0",
+      "name": "readline",
+      "versionInfo": "8.3",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "https://ftpmirror.gnu.org/gnu/readline/readline-8.3.tar.gz",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc"
+        }
+      ],
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:generic/readline@8.3?checksum=sha256%3Afe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc\u0026download_url=https%3A%2F%2Fftpmirror.gnu.org%2Fgnu%2Freadline%2Freadline-8.3.tar.gz",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-readline-8.3-r0",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-readline.yaml-dad4a0d176d98261fef50a86c5b3f382bd0d264c"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-readline-8.3-r0",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-readline-8.3-0"
+    }
+  ]
+}

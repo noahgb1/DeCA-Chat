@@ -1,0 +1,87 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-zlib-1.3.1-r50",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-06-23T13:34:18Z",
+    "creators": [
+      "Tool: melange (v0.26.12+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/eb5fac638aeac5611629f46c1e5b9789",
+  "documentDescribes": [
+    "SPDXRef-Package-zlib-1.3.1-r50"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-zlib-1.3.1-r50",
+      "name": "zlib",
+      "versionInfo": "1.3.1-r50",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0 AND MIT",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/zlib@1.3.1-r50?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-zlib.yaml-68300bf54bce71eec61a49d5c749364f82ea19af",
+      "name": "zlib.yaml",
+      "versionInfo": "68300bf54bce71eec61a49d5c749364f82ea19af",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@68300bf54bce71eec61a49d5c749364f82ea19af#zlib.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-github.com-madler-zlib.git-v1.3.1-51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf-0",
+      "name": "zlib",
+      "versionInfo": "v1.3.1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0 AND MIT",
+      "downloadLocation": "https://github.com/madler/zlib/archive/51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf.tar.gz",
+      "originator": "Organization: Madler",
+      "supplier": "Organization: Madler",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/madler/zlib@v1.3.1",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-zlib-1.3.1-r50",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-zlib.yaml-68300bf54bce71eec61a49d5c749364f82ea19af"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-zlib-1.3.1-r50",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-github.com-madler-zlib.git-v1.3.1-51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf-0"
+    }
+  ]
+}

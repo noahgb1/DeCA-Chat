@@ -1,0 +1,93 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "apk-libstdc++-15.1.0-r1",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2025-06-02T17:31:02Z",
+    "creators": [
+      "Tool: melange (v0.26.3+dirty)",
+      "Organization: Chainguard, Inc"
+    ],
+    "licenseListVersion": "3.22"
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://spdx.org/spdxdocs/chainguard/melange/f18ee6b176eac4d2bfc290713df861db",
+  "documentDescribes": [
+    "SPDXRef-Package-libstdcC43C43-15.1.0-r1"
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-libstdcC43C43-15.1.0-r1",
+      "name": "libstdc++",
+      "versionInfo": "15.1.0-r1",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:apk/wolfi/libstdc%2B%2B@15.1.0-r1?arch=x86_64",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-gcc.yaml-21f898ccd7a998d94cd29990e1af7361c36568b4",
+      "name": "gcc.yaml",
+      "versionInfo": "21f898ccd7a998d94cd29990e1af7361c36568b4",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/wolfi-dev/os@21f898ccd7a998d94cd29990e1af7361c36568b4#gcc.yaml",
+          "referenceType": "purl"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-gcc-15.1.0-0",
+      "name": "gcc",
+      "versionInfo": "15.1.0",
+      "filesAnalyzed": false,
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "downloadLocation": "https://ftpmirror.gnu.org/gnu/gcc/gcc-15.1.0/gcc-15.1.0.tar.xz",
+      "originator": "Organization: Wolfi",
+      "supplier": "Organization: Wolfi",
+      "checksums": [
+        {
+          "algorithm": "SHA512",
+          "checksumValue": "ddd35ca6c653dffa88f7c7ef9ee4cd806e156e0f3b30f4d63e75a8363361285cd566ee73127734cde6a934611de815bee3e32e24bfd2e0ab9f7ff35c929821c1"
+        }
+      ],
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:generic/gcc@15.1.0?checksum=sha512%3Addd35ca6c653dffa88f7c7ef9ee4cd806e156e0f3b30f4d63e75a8363361285cd566ee73127734cde6a934611de815bee3e32e24bfd2e0ab9f7ff35c929821c1\u0026download_url=https%3A%2F%2Fftpmirror.gnu.org%2Fgnu%2Fgcc%2Fgcc-15.1.0%2Fgcc-15.1.0.tar.xz",
+          "referenceType": "purl"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Package-libstdcC43C43-15.1.0-r1",
+      "relationshipType": "DESCRIBED_BY",
+      "relatedSpdxElement": "SPDXRef-Package-gcc.yaml-21f898ccd7a998d94cd29990e1af7361c36568b4"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-libstdcC43C43-15.1.0-r1",
+      "relationshipType": "GENERATED_FROM",
+      "relatedSpdxElement": "SPDXRef-Package-gcc-15.1.0-0"
+    }
+  ]
+}
