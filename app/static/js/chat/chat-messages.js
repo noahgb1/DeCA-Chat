@@ -727,3 +727,132 @@ if (modelSelect) {
     saveUserSetting({ 'preferredModelDeployment': selectedModel });
   });
 }
+
+
+/* ===========================
+   Next-word Ghost Suggestion
+   (additive, no changes above)
+   =========================== */
+(() => {
+  const inputEl = userInput; // already exported above
+  const overlayEl = document.getElementById("ghost-overlay");
+
+  if (!inputEl || !overlayEl) return; // quietly no-op if HTML not present
+
+  let debounceId = null;
+  let currentSuggestion = "";
+  let lastPrefixSent = "";
+  const DEBOUNCE_MS = 250;
+
+  const atEnd = (el) =>
+    el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
+
+  // Render: mirror typed text (transparent) + suggested word (light grey)
+  function renderOverlay(prefix, suggestion) {
+    // Keep typed mirror transparent inline so it works even before CSS is added
+    const typedSpan = `<span class="typed" style="color: transparent;">${escapeHtml(
+      prefix
+    )}</span>`;
+    const sugSpan = suggestion
+      ? ` <span class="suggestion" style="color:#9aa0a6;">${escapeHtml(
+          suggestion
+        )}</span>`
+      : "";
+    overlayEl.innerHTML = typedSpan + sugSpan;
+
+    // Show overlay if there's any text; otherwise hide for cleanliness
+    overlayEl.style.visibility = prefix || suggestion ? "visible" : "hidden";
+  }
+
+  async function fetchSuggestion(prefix) {
+    try {
+      const resp = await fetch("/api/predict-next-word", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prefix }),
+      });
+      if (!resp.ok) return "";
+      const data = await resp.json();
+      return typeof data?.suggestion === "string" ? data.suggestion : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function shouldQuery(prefix) {
+    if (!prefix || prefix.length < 3) return false;
+    if (!/\w$/.test(prefix)) return false; // only on word-ish boundary
+    if (prefix === lastPrefixSent) return false;
+    return true;
+  }
+
+  function clearSuggestion() {
+    currentSuggestion = "";
+    renderOverlay(inputEl.value || "", "");
+  }
+
+  function maybeQuery() {
+    const prefix = inputEl.value || "";
+    // if caret not at end or not a good time to query, just mirror typed text
+    if (!atEnd(inputEl) || !shouldQuery(prefix)) {
+      currentSuggestion = "";
+      renderOverlay(prefix, "");
+      return;
+    }
+
+    clearTimeout(debounceId);
+    debounceId = setTimeout(async () => {
+      lastPrefixSent = prefix;
+      const suggestion = await fetchSuggestion(prefix);
+      currentSuggestion = suggestion || "";
+      renderOverlay(prefix, currentSuggestion);
+    }, DEBOUNCE_MS);
+  }
+
+  // --- Event wiring ---
+  // Keep overlay mirrored and query as needed
+  inputEl.addEventListener("input", maybeQuery);
+
+  // Track caret moves (arrows, mouse) so we hide suggestion when caret isn't at end
+  inputEl.addEventListener("keyup", (e) => {
+    if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+      if (!atEnd(inputEl)) currentSuggestion = "";
+      renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
+    }
+  });
+  inputEl.addEventListener("click", () => {
+    renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
+  });
+  inputEl.addEventListener("mouseup", () => {
+    renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
+  });
+
+  // Accept suggestion with Tab or Right Arrow; clear with Escape
+  inputEl.addEventListener("keydown", (e) => {
+    if (currentSuggestion && atEnd(inputEl) && (e.key === "Tab" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      inputEl.value = (inputEl.value || "") + currentSuggestion;
+      currentSuggestion = "";
+      renderOverlay(inputEl.value, "");
+      // re-trigger the textarea's auto-resize logic bound to 'input'
+      inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+    if (e.key === "Escape") {
+      clearSuggestion();
+      return;
+    }
+    // When sending (Enter without Shift), clear the overlay but let existing handler send
+    if (e.key === "Enter" && !e.shiftKey) {
+      clearSuggestion();
+    }
+  });
+
+  // Also clear when clicking the Send button
+  if (sendBtn) {
+    sendBtn.addEventListener("click", clearSuggestion);
+  }
+
+  // Initial paint
+  renderOverlay(inputEl.value || "", "");
+})();

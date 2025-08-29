@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %} 
 {% block title %}
     Chats - {{ app_settings.app_title }}
 {% endblock %}
@@ -7,32 +7,66 @@
     <link rel="stylesheet" href="/static/css/chats.css">
     <style>
         /* Styles for conversation checkboxes */
-        .conversation-item {
-            position: relative;
-            cursor: pointer;
+        .conversation-item { position: relative; cursor: pointer; }
+        .conversation-checkbox { cursor: pointer; min-width: 18px; min-height: 18px; display: none; }
+        .selection-mode .conversation-checkbox { display: block; }
+        #delete-selected-btn { transition: all 0.3s ease; }
+        .selection-mode .conversation-item { padding-left: 0.5rem; }
+
+        /* LEFT header: vertical-only shrink; keep p-3 horizontal padding */
+        #left-pane .sidebar-header-tight{
+            padding-top: .5rem !important;
+            padding-bottom: .5rem !important;
         }
-        
-        .conversation-checkbox {
-            cursor: pointer;
-            min-width: 18px;
-            min-height: 18px;
-            display: none; /* Hide checkboxes by default */
+
+        /* Pill button for the doc-panel toggle; consistent size both states */
+        .doc-panel-toggle{
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            border-radius: 9999px !important;  /* pill */
+            white-space: nowrap;
+            padding: .25rem .75rem;             /* btn-sm-ish */
         }
-        
-        /* Show checkboxes when in selection mode */
-        .selection-mode .conversation-checkbox {
-            display: block;
+
+        /* === WIDEN CHAT CONTENT AREA (strong override) ===
+           Removes the narrow column feel by overriding inline/utility widths
+           on message cards/rows ONLY inside #chatbox, while keeping a small gutter. */
+        /* ####noah changed this#### */
+        :root{
+            --chat-side-gutter: 1rem;                 /* left/right breathing room */
+            --chat-max-wide:   1400px;                /* hard cap on huge screens */
+            --chat-fluid-pct:  98%;                   /* don’t literally hit edges */
         }
-        
-        /* Ensure the delete button is properly styled */
-        #delete-selected-btn {
-            transition: all 0.3s ease;
+        #chatbox{
+            padding-left: var(--chat-side-gutter);
+            padding-right: var(--chat-side-gutter);
         }
-        
-        /* Add some padding to the left when in selection mode */
-        .selection-mode .conversation-item {
-            padding-left: 0.5rem;
+        /* Make message wrappers use full available width, centered, and ignore inline max-width */
+        #chatbox .card,
+        #chatbox .message-card,
+        #chatbox .ai-message,
+        #chatbox .user-message,
+        #chatbox .assistant-message,
+        #chatbox .response-card,
+        #chatbox .message-bubble{
+            margin-left: auto;
+            margin-right: auto;
+            width: min(var(--chat-max-wide), var(--chat-fluid-pct)) !important;
+            max-width: none !important;               /* beat inline style max-width */
         }
+        /* If messages were placed in Bootstrap grid columns, force those to span full width */
+        #chatbox .row > [class^="col-"],
+        #chatbox .row > [class*=" col-"]{
+            flex: 0 0 100% !important;
+            max-width: 100% !important;
+        }
+        /* Some themes add w-75/w-50 classes to cards; override them here */
+        #chatbox .w-25, #chatbox .w-50, #chatbox .w-75{
+            width: min(var(--chat-max-wide), var(--chat-fluid-pct)) !important;
+            max-width: none !important;
+        }
+        /* ###### */
     </style>
 {% endblock %}
 
@@ -41,7 +75,8 @@
     <div id="split-container" class="h-100 w-100">
 
         <div id="left-pane" class="d-flex flex-column h-100">
-            <div class="d-flex justify-content-between align-items-center p-3 border-bottom flex-shrink-0">
+            <!-- Keep p-3 for roomy left/right; reduce only top/bottom -->
+            <div class="p-3 sidebar-header-tight d-flex justify-content-between align-items-center border-bottom flex-shrink-0">
                 <h5>Conversations</h5>
                 <div class="d-flex align-items-center">
                     <button class="btn btn-danger btn-sm me-2" id="delete-selected-btn" style="display: none;" title="Delete selected conversations">
@@ -61,13 +96,13 @@
         </div>
 
         <div id="right-pane" class="d-flex flex-column h-100 chat-container">
-             <div class="p-3 border-bottom d-flex align-items-center justify-content-between flex-shrink-0">
+            <!-- Right header unchanged -->
+            <div class="p-3 border-bottom d-flex align-items-center justify-content-between flex-shrink-0">
                 <div class="d-flex flex-column">
                     <h5 id="current-conversation-title" class="mb-0">
                         Select or start a conversation
                     </h5>
-                    <div id="current-conversation-classifications" class="mt-1">
-                    </div>
+                    <div id="current-conversation-classifications" class="mt-1"></div>
                 </div>
             </div>
 
@@ -76,71 +111,78 @@
             </div>
 
             <div class="p-3 border-top flex-shrink-0">
-                
-                 <div class="d-flex align-items-center mb-2 flex-wrap gap-2">
-                    
+                <div class="d-flex align-items-center mb-2 flex-wrap gap-2">
+
                     {% if settings.enable_image_generation %}
-                    <button
-                        id="image-generate-btn"
-                        class="btn btn-outline-secondary btn-sm search-btn"
-                        data-bs-toggle="tooltip" data-bs-placement="top" title="Generate images with AI"
-                    >
+                    <button id="image-generate-btn" class="btn btn-outline-secondary btn-sm search-btn"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="Generate images with AI">
                         <i class="bi bi-image"></i> <span class="search-btn-text d-none d-md-inline">Image</span>
                     </button>
                     {% endif %}
+
                     {% if settings.enable_user_workspace or settings.enable_group_workspaces %}
-                    <button
-                        id="search-documents-btn"
-                        class="btn btn-outline-secondary btn-sm search-btn"
-                        data-bs-toggle="tooltip" data-bs-placement="top" title="Search workspaces"
-                    >
+                    <button id="search-documents-btn" class="btn btn-outline-secondary btn-sm search-btn"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="Search workspaces">
                         <i class="bi bi-file-earmark-text"></i> <span class="search-btn-text d-none d-md-inline">Workspaces</span>
                     </button>
                     {% endif %}
+
                     {% if settings.enable_web_search %}
-                    <button
-                        id="search-web-btn"
-                        class="btn btn-outline-secondary btn-sm search-btn"
-                        data-bs-toggle="tooltip" data-bs-placement="top" title="Search the web using Bing"
-                    >
+                    <button id="search-web-btn" class="btn btn-outline-secondary btn-sm search-btn"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="Search the web using Bing">
                         <i class="bi bi-globe"></i> <span class="search-btn-text d-none d-md-inline">Web</span>
                     </button>
                     {% endif %}
-                     <input type="file" id="file-input" accept=".txt,.pdf,.docx,.xlsx,.pptx,.html,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif,.md,.json,.csv" style="display: none"/>
-                     <button id="choose-file-btn" class="btn btn-outline-secondary btn-sm file-btn position-relative" data-bs-toggle="tooltip" data-bs-placement="top" title="Add a file to this conversation">
-                         <i class="bi bi-paperclip"></i> <span class="file-btn-text d-none d-md-inline">File</span>
-                         <span id="cancel-file-selection" class="position-absolute top-50 end-0 translate-middle-y me-1" style="display: none; cursor: pointer;" title="Cancel file selection">
-                             <i class="bi bi-x-circle-fill text-danger"></i>
-                         </span>
-                     </button>
-                     <button id="upload-btn" class="btn btn-secondary btn-sm" style="display: none">Add to Chat</button>
+
+                    <input type="file" id="file-input" accept=".txt,.pdf,.docx,.xlsx,.pptx,.html,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.heif,.md,.json,.csv" style="display: none"/>
+                    <button id="choose-file-btn" class="btn btn-outline-secondary btn-sm file-btn position-relative"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="Add a file to this conversation">
+                        <i class="bi bi-paperclip"></i> <span class="file-btn-text d-none d-md-inline">File</span>
+                        <span id="cancel-file-selection" class="position-absolute top-50 end-0 translate-middle-y me-1"
+                              style="display: none; cursor: pointer;" title="Cancel file selection">
+                            <i class="bi bi-x-circle-fill text-danger"></i>
+                        </span>
+                    </button>
+                    <button id="upload-btn" class="btn btn-secondary btn-sm" style="display: none">Add to Chat</button>
+
                     {% if settings.enable_user_workspace or settings.enable_group_workspaces %}
-                    <button id="search-prompts-btn" class="btn btn-outline-secondary btn-sm search-btn" data-bs-toggle="tooltip" data-bs-placement="top" title="Select a saved prompt">
+                    <button id="search-prompts-btn" class="btn btn-outline-secondary btn-sm search-btn"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="Select a saved prompt">
                         <i class="bi bi-lightbulb"></i> <span class="search-btn-text d-none d-md-inline">Prompts</span>
+                    </button>
+
+                    <!-- Pill toggle, aligned to far right -->
+                    <button id="minimize-doc-panel-btn"
+                            class="btn btn-outline-secondary btn-sm rounded-pill doc-panel-toggle ms-auto"
+                            type="button"
+                            aria-pressed="false"
+                            aria-controls="search-documents-container"
+                            data-bs-toggle="tooltip" data-bs-placement="top"
+                            title="Hide workspace panel (keep context)">
+                      <i class="bi bi-chevron-up"></i>
+                      <span class="d-none d-md-inline">Hide Panel</span>
                     </button>
                     {% endif %}
                 </div>
 
-                
                 {% if settings.enable_user_workspace or settings.enable_group_workspaces %}
                 <div id="search-documents-container" class="card p-2 mb-2" style="display: none; border-radius: 0.5rem;">
-                    
-                     <div class="d-flex flex-wrap align-items-end gap-2">
-                         <div class="flex-grow-1" style="min-width: 120px;">
-                             <label for="doc-scope-select" class="form-label mb-1 small text-muted">Scope</label>
-                             <select class="form-select form-select-sm" id="doc-scope-select">
-                                 <option value="all" selected>All</option>
-                                 <option value="personal">Personal</option>
-                                 <option value="group">Group</option>
-                             </select>
-                         </div>
-                             <div class="flex-grow-1" style="min-width: 200px;">
-                             <label for="document-select" class="form-label mb-1 small text-muted">Document</label>
-                             <div class="dropdown" id="document-dropdown">
-                                <button class="form-select form-select-sm d-flex justify-content-between align-items-center" 
-                                        type="button" 
-                                        id="document-dropdown-button" 
-                                        data-bs-toggle="dropdown" 
+                    <div class="d-flex flex-wrap align-items-end gap-2">
+                        <div class="flex-grow-1" style="min-width: 120px;">
+                            <label for="doc-scope-select" class="form-label mb-1 small text-muted">Scope</label>
+                            <select class="form-select form-select-sm" id="doc-scope-select">
+                                <option value="all" selected>All</option>
+                                <option value="personal">Personal</option>
+                                <option value="group">Group</option>
+                            </select>
+                        </div>
+                        <div class="flex-grow-1" style="min-width: 200px;">
+                            <label for="document-select" class="form-label mb-1 small text-muted">Document</label>
+                            <div class="dropdown" id="document-dropdown">
+                                <button class="form-select form-select-sm d-flex justify-content-between align-items-center"
+                                        type="button"
+                                        id="document-dropdown-button"
+                                        data-bs-toggle="dropdown"
                                         data-bs-auto-close="outside"
                                         data-bs-display="static"
                                         data-bs-offset="0,5"
@@ -158,72 +200,71 @@
                                 </div>
                                 <!-- Hidden select element for compatibility -->
                                 <select class="d-none" id="document-select"></select>
-                             </div>
-                         </div>
+                            </div>
+                        </div>
                         {% if settings.enable_document_classification %}
                         <div class="flex-grow-1 classification-container" style="max-width: 150px;">
-                             <label for="classification-control" class="form-label mb-1 small text-muted">Classification</label>
-                             <input type="text" id="classification-select" class="form-control form-control-sm" style="display: none;" readonly />
-                             <div class="dropdown" id="classification-multiselect-dropdown" style="display: none;">
+                            <label for="classification-control" class="form-label mb-1 small text-muted">Classification</label>
+                            <input type="text" id="classification-select" class="form-control form-control-sm" style="display: none;" readonly />
+                            <div class="dropdown" id="classification-multiselect-dropdown" style="display: none;">
                                 <button id="classification-dropdown-btn" class="btn btn-light btn-sm dropdown-toggle w-100 text-start" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                                     {_ Placeholder _}
                                 </button>
-                                <ul class="dropdown-menu w-100" id="classification-dropdown-menu" style="max-height: 200px; overflow-y: auto;">
-                                    
-                                </ul>
-                             </div>
-                         </div>
+                                <ul class="dropdown-menu w-100" id="classification-dropdown-menu" style="max-height: 200px; overflow-y: auto;"></ul>
+                            </div>
+                        </div>
                         {% endif %}
-                     </div>
+                    </div>
                 </div>
                 {% endif %}
 
-                
                 <div class="chat-input-container d-flex gap-2">
-                    <!-- Textarea takes up remaining space -->
-                     <textarea id="user-input" class="form-control flex-grow-1" placeholder="Type your message..." rows="1" style="resize: none;" oninput="this.style.height = ''; this.style.height = Math.min(this.scrollHeight, 200) + 'px';"></textarea>
 
-                    <!-- Prompt Selector Container (conditionally visible) -->
+                    <!-- BEGIN: Next-word prediction wrapper + overlay (added) -->
+                    <div class="input-wrapper flex-grow-1 position-relative" id="input-wrapper">
+                        <!-- Empty ghost overlay; CSS/JS will control rendering -->
+                        <div id="ghost-overlay"
+                             class="position-absolute w-100 h-100"
+                             aria-hidden="true"
+                             style="inset: 0; pointer-events: none; z-index: 1;">
+                        </div>
+
+                        <textarea id="user-input"
+                                  class="form-control w-100"
+                                  placeholder="Type your message..."
+                                  rows="1"
+                                  style="resize: none;"
+                                  oninput="this.style.height='';this.style.height=Math.min(this.scrollHeight,200)+'px';"></textarea>
+                    </div>
+                    <!-- END: Next-word prediction wrapper + overlay -->
+
                     {% if settings.enable_user_workspace or settings.enable_group_workspaces %}
-                     <div id="prompt-selection-container" class="flex-shrink-0" style="display: none;">
-                          <select class="form-select" id="prompt-select"></select>
-                          <!-- Optional: Add a small label above if needed -->
-                          <!-- <label for="prompt-select" class="form-label mb-1 small text-muted">Prompt</label> -->
-                     </div>
+                    <div id="prompt-selection-container" class="flex-shrink-0" style="display: none;">
+                        <select class="form-select" id="prompt-select"></select>
+                    </div>
                     {% endif %}
 
-                    <!-- Model selector -->
                     <div class="flex-shrink-0">
                         <label for="model-select" class="visually-hidden">Model</label>
                         <select id="model-select" class="form-select">
                         {% if settings.enable_gpt_apim %}
-                            {# when using APIM, azure_apim_gpt_deployment may be "dep1" or "dep1,dep2,…" #}
                             {% set raw = settings.azure_apim_gpt_deployment or "" %}
                             {% set apim_list = raw.split(',') %}
                             {% for dep in apim_list %}
                             {% set d = dep.strip() %}
-                            <option value="{{ d }}" {% if loop.first %}selected{% endif %}>
-                                {{ d }}
-                            </option>
+                            <option value="{{ d }}" {% if loop.first %}selected{% endif %}>{{ d }}</option>
                             {% endfor %}
                         {% else %}
-                            {# normal direct-Azure OpenAI flow: show whatever you fetched into settings.gpt_model.selected #}
                             {% for model in settings.gpt_model.selected %}
-                            <option
-                                value="{{ model.deploymentName }}"
-                                {% if loop.first %}selected{% endif %}
-                            >
-                                {{ model.modelName }}
-                            </option>
+                            <option value="{{ model.deploymentName }}" {% if loop.first %}selected{% endif %}>{{ model.modelName }}</option>
                             {% endfor %}
                         {% endif %}
                         </select>
                     </div>
 
-                     <!-- Send Button (doesn't shrink) -->
-                     <button class="btn btn-primary flex-shrink-0" id="send-btn" title="Send Message">
-                          <i class="bi bi-send-fill"></i> <span class="d-none d-sm-inline">Send</span>
-                     </button>
+                    <button class="btn btn-primary flex-shrink-0" id="send-btn" title="Send Message">
+                        <i class="bi bi-send-fill"></i> <span class="d-none d-sm-inline">Send</span>
+                    </button>
                 </div>
             </div>
         </div> 
@@ -243,18 +284,9 @@
             <input type="hidden" id="feedback-ai-response-id" name="aiResponseId" />
             <input type="hidden" id="feedback-conversation-id" name="conversationId" />
             <input type="hidden" id="feedback-type" name="feedbackType" />
-            
             <div class="mb-3">
-              <label for="feedback-reason" class="form-label">
-                Reason (optional)
-              </label>
-              <textarea 
-                class="form-control" 
-                id="feedback-reason"
-                name="reason"
-                rows="3"
-                placeholder="e.g., incomplete answer, incorrect details..."
-              ></textarea>
+              <label for="feedback-reason" class="form-label">Reason (optional)</label>
+              <textarea class="form-control" id="feedback-reason" name="reason" rows="3" placeholder="e.g., incomplete answer, incorrect details..."></textarea>
             </div>
           </div>
           <div class="modal-footer">
@@ -270,20 +302,18 @@
 
 {% block scripts %}
 <script>
-    // Ensure global variables are still accessible if needed by older scripts
+    // Ensure globals stay accessible
     window.enableUserFeedback = "{{ enable_user_feedback }}";
     window.activeGroupId = "{{ active_group_id }}";
     window.enableEnhancedCitations = "{{ enable_enhanced_citations }}";
     window.enable_document_classification = "{{ enable_document_classification }}";
     window.classification_categories = JSON.parse('{{ settings.document_classification_categories|tojson(indent=None)|safe }}' || '[]');
-    if (!Array.isArray(window.classification_categories)) {
-        window.classification_categories = [];
-    }
+    if (!Array.isArray(window.classification_categories)) { window.classification_categories = []; }
 
-    // Layout related globals (can stay here or move entirely into chat-layout.js if preferred)
+    // Layout globals
     let splitInstance = null;
-    let currentLayout = 'split'; // Default layout
-    let currentSplitSizes = [25, 75]; // Default split percentage [left, right]
+    let currentLayout = 'split';
+    let currentSplitSizes = [25, 75];
     const USER_SETTINGS_KEY_LAYOUT = 'layoutPreference';
     const USER_SETTINGS_KEY_SPLIT = 'splitSizesPreference';
 </script>
@@ -300,4 +330,52 @@
 <script type="module" src="{{ url_for('static', filename='js/chat/chat-citations.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/chat/chat-loading-indicator.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/chat/chat-onload.js') }}"></script>
+
+<!-- Minimize toggle logic (UI only; context unchanged) -->
+<script type="module">
+document.addEventListener('DOMContentLoaded', () => {
+  const panel = document.getElementById('search-documents-container');
+  const btn   = document.getElementById('minimize-doc-panel-btn');
+  if (!panel || !btn) return;
+
+  const ICON_UP   = 'bi-chevron-up';
+  const ICON_DOWN = 'bi-chevron-down';
+  const LS_KEY    = 'docPanelMinimized';
+  const labelSpan = btn.querySelector('span.d-none.d-md-inline');
+
+  const setIcon = (min) => {
+    const i = btn.querySelector('i');
+    if (!i) return;
+    i.classList.remove(min ? ICON_UP : ICON_DOWN);
+    i.classList.add(min ? ICON_DOWN : ICON_UP);
+  };
+
+  const apply = (min) => {
+    panel.style.display = min ? 'none' : '';
+    btn.setAttribute('aria-pressed', min ? 'true' : 'false');
+    setIcon(min);
+
+    if (min) {
+      btn.classList.remove('btn-outline-secondary');
+      btn.classList.add('btn-primary');
+      if (labelSpan) labelSpan.textContent = 'Show Panel';
+      btn.title = 'Show workspace panel (context remains active)';
+    } else {
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline-secondary');
+      if (labelSpan) labelSpan.textContent = 'Hide Panel';
+      btn.title = 'Hide workspace panel (keep context)';
+    }
+  };
+
+  let minimized = localStorage.getItem(LS_KEY) === '1';
+  apply(minimized);
+
+  btn.addEventListener('click', () => {
+    minimized = !minimized;
+    localStorage.setItem(LS_KEY, minimized ? '1' : '0');
+    apply(minimized);
+  });
+});
+</script>
 {% endblock %}

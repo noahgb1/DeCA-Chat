@@ -90,6 +90,10 @@ app.config['SESSION_TYPE'] = 'filesystem'
 app.config['VERSION'] = '0.215.037'
 Session(app)
 
+# >>> ADDED: feature flag for next-word prediction (read by route_backend_predict.py)
+app.config['ENABLE_TYPING_PREDICTION'] = True
+# <<< ADDED
+
 CLIENTS = {}
 CLIENTS_LOCK = threading.Lock()
 

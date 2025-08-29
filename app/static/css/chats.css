@@ -1016,3 +1016,49 @@ ol {
   box-shadow: 0 2px 4px rgba(0,0,0,0.02);
   z-index: 1050;
 }
+
+
+/* ================================
+   Next-word ghost suggestion (NEW)
+   ================================ */
+
+.input-wrapper {
+  position: relative;
+}
+
+.input-wrapper #user-input {
+  position: relative;
+  background: transparent; /* Let ghost text show through */
+  z-index: 2;
+}
+
+/* Overlay that mirrors typed text and shows prediction in light grey */
+#ghost-overlay {
+  position: absolute;
+  inset: 0;
+  padding: 0.375rem 0.75rem; /* Match Bootstrap .form-control default padding */
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: #9aa0a6;        /* Base ghost color (light grey) */
+  pointer-events: none;  /* Non-interactive */
+  user-select: none;
+  z-index: 1;            /* Behind the real textarea text */
+  opacity: 0.85;
+}
+
+/* Mirror of what the user has typed—kept invisible to align cursor geometry */
+#ghost-overlay .typed {
+  color: transparent;
+}
+
+/* The suggested word appears in light grey */
+#ghost-overlay .suggestion {
+  color: #9aa0a6;
+}
+
+/* Dark mode subtle tweak for readability */
+[data-bs-theme="dark"] #ghost-overlay .suggestion {
+  color: #a8b0b8;
+}

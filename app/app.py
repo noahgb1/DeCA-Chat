@@ -35,7 +35,9 @@ from flask_session import Session
 from redis import Redis
 from functions_settings import get_settings
 
-
+# >>> ADDED: import the prediction blueprint
+from route_backend_predict import bp_predict
+# <<< ADDED
 
 from route_external_health import *
 
@@ -216,6 +218,10 @@ register_route_backend_prompts(app)
 
 # ------------------- API Group Prompts Routes ----------
 register_route_backend_group_prompts(app)
+
+# >>> ADDED: register the prediction blueprint
+app.register_blueprint(bp_predict)
+# <<< ADDED
 
 # ------------------- Extenral Health Routes ----------
 register_route_external_health(app)
