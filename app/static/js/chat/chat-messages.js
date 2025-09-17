@@ -11,7 +11,8 @@ import { promptSelect } from "./chat-prompts.js";
 import {
   createNewConversation,
   selectConversation,
-  addConversationToList
+  addConversationToList,
+  loadConversations,             // <-- ADDED
 } from "./chat-conversations.js";
 import { escapeHtml } from "./chat-utils.js";
 import { showToast } from "./chat-toast.js";
@@ -25,6 +26,34 @@ const promptSelectionContainer = document.getElementById(
 const chatbox = document.getElementById("chatbox");
 const modelSelect = document.getElementById("model-select");
 
+/* === NEW: streaming/interrupt state === */
+let currentChatAbortController = null;
+let isRequestInFlight = false;
+
+function setInFlightState(inFlight) {
+  isRequestInFlight = inFlight;
+  if (userInput) userInput.disabled = inFlight;
+
+  // Morph the single button between Send and Stop
+  if (sendBtn) {
+    const icon = sendBtn.querySelector("[data-icon]");
+    const label = sendBtn.querySelector("[data-label]");
+    if (inFlight) {
+      sendBtn.classList.remove("btn-primary");
+      sendBtn.classList.add("btn-outline-danger");
+      sendBtn.title = "Stop generating";
+      if (icon) icon.className = "bi bi-stop-fill";
+      if (label) label.textContent = "Stop";
+    } else {
+      sendBtn.classList.add("btn-primary");
+      sendBtn.classList.remove("btn-outline-danger");
+      sendBtn.title = "Send message";
+      if (icon) icon.className = "bi bi-send-fill";
+      if (label) label.textContent = "Send";
+    }
+  }
+}
+
 function createCitationsHtml(
   hybridCitations = [],
   webCitations = [],
@@ -37,7 +66,7 @@ function createCitationsHtml(
     hasCitations = true;
     hybridCitations.forEach((cite, index) => {
       const citationId =
-        cite.citation_id || `${cite.chunk_id}_${cite.page_number || index}`; // Fallback ID
+        cite.citation_id || `${cite.chunk_id}_${cite.page_number || index}`;
       const displayText = `${escapeHtml(cite.file_name)}, Page ${
         cite.page_number || "N/A"
       }`;
@@ -54,7 +83,6 @@ function createCitationsHtml(
   if (webCitations && webCitations.length > 0) {
     hasCitations = true;
     webCitations.forEach((cite) => {
-      // Example: cite.url, cite.title
       const displayText = cite.title
         ? escapeHtml(cite.title)
         : escapeHtml(cite.url);
@@ -69,7 +97,6 @@ function createCitationsHtml(
     });
   }
 
-  // Optionally wrap in a container if there are any citations
   if (hasCitations) {
     return `<div class="citations-container" data-message-id="${escapeHtml(
       messageId
@@ -89,29 +116,51 @@ export function loadMessages(conversationId) {
       chatbox.innerHTML = "";
       console.log(`--- Loading messages for ${conversationId} ---`);
       data.messages.forEach((msg) => {
-        console.log(`[loadMessages Loop] -------- START Message ID: ${msg.id} --------`);
+        console.log(
+          `[loadMessages Loop] -------- START Message ID: ${msg.id} --------`
+        );
         console.log(`[loadMessages Loop] Role: ${msg.role}`);
         if (msg.role === "user") {
           appendMessage("You", msg.content);
         } else if (msg.role === "assistant") {
-          console.log(`  [loadMessages Loop] Full Assistant msg object:`, JSON.stringify(msg)); // Stringify to see exact keys
-          console.log(`  [loadMessages Loop] Checking keys: msg.id=${msg.id}, msg.augmented=${msg.augmented}, msg.hybrid_citations exists=${'hybrid_citations' in msg}, msg.web_search_citations exists=${'web_search_citations' in msg}`);
-          const senderType = msg.role === "user" ? "You" :
-                       msg.role === "assistant" ? "AI" :
-                       msg.role === "file" ? "File" :
-                       msg.role === "image" ? "image" :
-                       msg.role === "safety" ? "safety" : "System";
+          console.log(
+            `  [loadMessages Loop] Full Assistant msg object:`,
+            JSON.stringify(msg)
+          );
+          console.log(
+            `  [loadMessages Loop] Checking keys: msg.id=${msg.id}, msg.augmented=${msg.augmented}, msg.hybrid_citations exists=${
+              "hybrid_citations" in msg
+            }, msg.web_search_citations exists=${
+              "web_search_citations" in msg
+            }`
+          );
+          const senderType =
+            msg.role === "user"
+              ? "You"
+              : msg.role === "assistant"
+              ? "AI"
+              : msg.role === "file"
+              ? "File"
+              : msg.role === "image"
+              ? "image"
+              : msg.role === "safety"
+              ? "safety"
+              : "System";
 
           const arg2 = msg.content;
           const arg3 = msg.model_deployment_name;
           const arg4 = msg.id;
-          const arg5 = msg.augmented; // Get value
-          const arg6 = msg.hybrid_citations; // Get value
-          const arg7 = msg.web_search_citations; // Get value
-          console.log(`  [loadMessages Loop] Calling appendMessage with -> sender: ${senderType}, id: ${arg4}, augmented: ${arg5} (type: ${typeof arg5}), hybrid_len: ${arg6?.length}, web_len: ${arg7?.length}`);
+          const arg5 = msg.augmented;
+          const arg6 = msg.hybrid_citations;
+          const arg7 = msg.web_search_citations;
+          console.log(
+            `  [loadMessages Loop] Calling appendMessage with -> sender: ${senderType}, id: ${arg4}, augmented: ${arg5} (type: ${typeof arg5}), hybrid_len: ${arg6?.length}, web_len: ${arg7?.length}`
+          );
 
-          appendMessage(senderType, arg2, arg3, arg4, arg5, arg6, arg7); 
-          console.log(`[loadMessages Loop] -------- END Message ID: ${msg.id} --------`);
+          appendMessage(senderType, arg2, arg3, arg4, arg5, arg6, arg7);
+          console.log(
+            `[loadMessages Loop] -------- END Message ID: ${msg.id} --------`
+          );
         } else if (msg.role === "file") {
           appendMessage("File", msg);
         } else if (msg.role === "image") {
@@ -123,7 +172,8 @@ export function loadMessages(conversationId) {
     })
     .catch((error) => {
       console.error("Error loading messages:", error);
-      if (chatbox) chatbox.innerHTML = `<div class="text-center p-3 text-danger">Error loading messages.</div>`;
+      if (chatbox)
+        chatbox.innerHTML = `<div class="text-center p-3 text-danger">Error loading messages.</div>`;
     });
 }
 
@@ -144,12 +194,10 @@ export function appendMessage(
 
   let avatarImg = "";
   let avatarAltText = "";
-  let messageClass = ""; // <<< ENSURE THIS IS DECLARED HERE
+  let messageClass = "";
   let senderLabel = "";
   let messageContentHtml = "";
-  // let postContentHtml = ""; // Not needed for the general structure anymore
 
-  // --- Handle AI message separately ---
   if (sender === "AI") {
     console.log(`--- appendMessage called for AI ---`);
     console.log(`Message ID: ${messageId}`);
@@ -173,13 +221,13 @@ export function appendMessage(
       : "AI";
 
     // Parse content
-    let cleaned = messageContent.trim().replace(/\n{3,}/g, "\n\n");
+    let cleaned = (messageContent || "").trim().replace(/\n{3,}/g, "\n\n");
     cleaned = cleaned.replace(/(\bhttps?:\/\/\S+)(%5D|\])+/gi, (_, url) => url);
     const withInlineCitations = parseCitations(cleaned);
     const htmlContent = DOMPurify.sanitize(marked.parse(withInlineCitations));
-    const mainMessageHtml = `<div class="message-text">${htmlContent}</div>`; // Renamed for clarity
+    const mainMessageHtml = `<div class="message-text">${htmlContent}</div>`;
 
-    // --- Footer Content (Copy, Feedback, Citations) ---
+    // Footer content (Copy, Feedback, Citations)
     const feedbackHtml = renderFeedbackIcons(messageId, currentConversationId);
     const hiddenTextId = `copy-md-${messageId || Date.now()}`;
     const copyButtonHtml = `
@@ -187,8 +235,8 @@ export function appendMessage(
                 <i class="bi bi-copy"></i>
             </button>
             <textarea id="${hiddenTextId}" style="display:none;">${escapeHtml(
-      withInlineCitations
-    )}</textarea>
+              withInlineCitations
+            )}</textarea>
         `;
     const copyAndFeedbackHtml = `<div class="message-actions d-flex align-items-center">${copyButtonHtml}${feedbackHtml}</div>`;
 
@@ -197,56 +245,19 @@ export function appendMessage(
       webCitations,
       messageId
     );
-    console.log(
-      `Generated citationsButtonsHtml (length ${
-        citationsButtonsHtml.length
-      }): ${citationsButtonsHtml.substring(0, 100)}...`
-    );
+
     let citationToggleHtml = "";
     let citationContentContainerHtml = "";
 
-    console.log("--- Checking Citation Conditions ---");
-    console.log("Message ID:", messageId);
-    console.log("augmented:", augmented, "Type:", typeof augmented);
-    console.log(
-      "hybridCitations:",
-      hybridCitations,
-      "Type:",
-      typeof hybridCitations,
-      "Length:",
-      hybridCitations?.length
-    );
-    console.log(
-      "webCitations:",
-      webCitations,
-      "Type:",
-      typeof webCitations,
-      "Length:",
-      webCitations?.length
-    );
-    const hybridCheck = hybridCitations && hybridCitations.length > 0;
-    const webCheck = webCitations && webCitations.length > 0;
-    console.log("Hybrid Check Result:", hybridCheck);
-    console.log("Web Check Result:", webCheck);
-    const overallCondition = augmented && (hybridCheck || webCheck);
-    console.log("Overall Condition Result:", overallCondition);
     const shouldShowCitations = augmented && citationsButtonsHtml;
-    console.log(
-      `Condition check (augmented && citationsButtonsHtml): ${shouldShowCitations}`
-    );
-
     if (shouldShowCitations) {
-      console.log(">>> Will generate and include citation elements.");
       const citationsContainerId = `citations-${messageId || Date.now()}`;
       citationToggleHtml = `<div class="citation-toggle-container"><button class="btn btn-sm btn-outline-secondary citation-toggle-btn" title="Show sources" aria-expanded="false" aria-controls="${citationsContainerId}"><i class="bi bi-journal-text"></i></button></div>`;
       citationContentContainerHtml = `<div class="citations-container mt-2 pt-2 border-top" id="${citationsContainerId}" style="display: none;">${citationsButtonsHtml}</div>`;
-    } else {
-      console.log(">>> Will NOT generate citation elements.");
     }
 
     const footerContentHtml = `<div class="message-footer d-flex justify-content-between align-items-center">${copyAndFeedbackHtml}${citationToggleHtml}</div>`;
 
-    // Build AI message inner HTML
     messageDiv.innerHTML = `
             <div class="message-content">
                 <img src="${avatarImg}" alt="${avatarAltText}" class="avatar">
@@ -258,14 +269,13 @@ export function appendMessage(
                 </div>
             </div>`;
 
-    messageDiv.classList.add(messageClass); // Add AI message class
-    chatbox.appendChild(messageDiv); // Append AI message
+    messageDiv.classList.add(messageClass);
+    chatbox.appendChild(messageDiv);
 
-    // --- Attach Event Listeners specifically for AI message ---
     attachCodeBlockCopyButtons(messageDiv.querySelector(".message-text"));
+
     const copyBtn = messageDiv.querySelector(".copy-btn");
     copyBtn?.addEventListener("click", () => {
-      /* ... copy logic ... */
       const hiddenTextarea = document.getElementById(
         copyBtn.dataset.hiddenTextId
       );
@@ -273,7 +283,7 @@ export function appendMessage(
       navigator.clipboard
         .writeText(hiddenTextarea.value)
         .then(() => {
-          copyBtn.innerHTML = '<i class="bi bi-check-lg text-success"></i>'; // Use check-lg
+          copyBtn.innerHTML = '<i class="bi bi-check-lg text-success"></i>';
           copyBtn.title = "Copied!";
           setTimeout(() => {
             copyBtn.innerHTML = '<i class="bi bi-copy"></i>';
@@ -285,10 +295,10 @@ export function appendMessage(
           showToast("Failed to copy text.", "warning");
         });
     });
+
     const toggleBtn = messageDiv.querySelector(".citation-toggle-btn");
     if (toggleBtn) {
       toggleBtn.addEventListener("click", () => {
-        /* ... toggle logic ... */
         const targetId = toggleBtn.getAttribute("aria-controls");
         const citationsContainer = messageDiv.querySelector(`#${targetId}`);
         if (!citationsContainer) return;
@@ -306,9 +316,7 @@ export function appendMessage(
     }
 
     scrollChatToBottom();
-    return; // <<< EXIT EARLY FOR AI MESSAGES
-
-    // --- Handle ALL OTHER message types ---
+    return messageDiv; // allow streaming updates
   } else {
     // Determine variables based on sender type
     if (sender === "You") {
@@ -322,18 +330,17 @@ export function appendMessage(
     } else if (sender === "File") {
       messageClass = "file-message";
       senderLabel = "File Added";
-      avatarImg = ""; // No avatar for file messages
+      avatarImg = "";
       avatarAltText = "";
       const filename = escapeHtml(messageContent.filename);
       const fileId = escapeHtml(messageContent.id);
       messageContentHtml = `<a href="#" class="file-link" data-conversation-id="${currentConversationId}" data-file-id="${fileId}"><i class="bi bi-file-earmark-arrow-up me-1"></i>${filename}</a>`;
     } else if (sender === "image") {
-      // Make sure this matches the case used in loadMessages/actuallySendMessage
-      messageClass = "image-message"; // Use a distinct class if needed, or reuse ai-message
+      messageClass = "image-message";
       senderLabel = modelName
         ? `AI <span style="color: #6c757d; font-size: 0.8em;">(${modelName})</span>`
-        : "Image"; // Or just "Image"
-      avatarImg = "/static/images/ai-avatar.png"; // Or a specific image icon
+        : "Image";
+      avatarImg = "/static/images/ai-avatar.png";
       avatarAltText = "Generated Image";
       messageContentHtml = `<img src="${messageContent}" alt="Generated Image" class="generated-image" style="width: 170px; height: 170px; cursor: pointer;" data-image-src="${messageContent}" onload="scrollChatToBottom()" />`;
     } else if (sender === "safety") {
@@ -354,20 +361,16 @@ export function appendMessage(
         messageContent
       )}</span>`;
     } else {
-      // This block should ideally not be reached if all sender types are handled
-      console.warn("Unknown message sender type:", sender); // Keep the warning
-      messageClass = "unknown-message"; // Fallback class
+      console.warn("Unknown message sender type:", sender);
+      messageClass = "unknown-message";
       senderLabel = "System";
       avatarImg = "/static/images/ai-avatar.png";
       avatarAltText = "System Avatar";
-      messageContentHtml = escapeHtml(messageContent); // Default safe display
+      messageContentHtml = escapeHtml(messageContent);
     }
 
-    // --- Build the General Message Structure ---
-    // This runs for "You", "File", "image", "safety", "Error", and the fallback "unknown"
-    messageDiv.classList.add(messageClass); // Add the determined class
+    messageDiv.classList.add(messageClass);
 
-    // Set innerHTML using the variables determined above
     messageDiv.innerHTML = `
             <div class="message-content ${
               sender === "You" || sender === "File" ? "flex-row-reverse" : ""
@@ -383,10 +386,9 @@ export function appendMessage(
                 </div>
             </div>`;
 
-    // Append and scroll (common actions for non-AI)
     chatbox.appendChild(messageDiv);
     scrollChatToBottom();
-  } // End of the large 'else' block for non-AI messages
+  }
 }
 
 export function sendMessage() {
@@ -419,12 +421,16 @@ export function sendMessage() {
     return;
   }
 
+  const dispatch = (window.USE_STREAMING
+    ? actuallySendMessageStream
+    : actuallySendMessage);
+
   if (!currentConversationId) {
     createNewConversation(() => {
-      actuallySendMessage(combinedMessage);
+      dispatch(combinedMessage);
     });
   } else {
-    actuallySendMessage(combinedMessage);
+    dispatch(combinedMessage);
   }
 
   userInput.value = "";
@@ -432,21 +438,17 @@ export function sendMessage() {
   if (promptSelect) {
     promptSelect.selectedIndex = 0;
   }
-  // Keep focus on input
   userInput.focus();
 }
 
 export function actuallySendMessage(finalMessageToSend) {
-  // const chatbox = document.getElementById("chatbox"); // Defined above
-  // const userInput = document.getElementById("user-input"); // Defined above
-  appendMessage("You", finalMessageToSend); // Append user message first
+  appendMessage("You", finalMessageToSend);
   userInput.value = "";
   userInput.style.height = "";
   showLoadingIndicatorInChatbox();
 
   const modelDeployment = modelSelect?.value;
 
-  // ... (keep existing logic for hybridSearchEnabled, selectedDocumentId, classificationsToSend, bingSearchEnabled, imageGenEnabled)
   let hybridSearchEnabled = false;
   const sdbtn = document.getElementById("search-documents-btn");
   if (sdbtn && sdbtn.classList.contains("active")) {
@@ -454,21 +456,18 @@ export function actuallySendMessage(finalMessageToSend) {
   }
 
   let selectedDocumentId = null;
-  let classificationsToSend = null; // Variable to hold classification value
+  let classificationsToSend = null;
   const docSel = document.getElementById("document-select");
-  const classificationInput = document.getElementById("classification-select"); // Get the input
+  const classificationInput = document.getElementById("classification-select");
 
-  // Always set selectedDocumentId if a document is selected, regardless of hybridSearchEnabled
   if (docSel) {
     const selectedDocOption = docSel.options[docSel.selectedIndex];
-    if (selectedDocOption && selectedDocOption.value !== "") {
-      selectedDocumentId = selectedDocOption.value;
-    } else {
-      selectedDocumentId = null;
-    }
+    selectedDocumentId =
+      selectedDocOption && selectedDocOption.value !== ""
+        ? selectedDocOption.value
+        : null;
   }
 
-  // Only set classificationsToSend if classificationInput exists
   if (classificationInput) {
     classificationsToSend =
       classificationInput.value === "N/A" ? null : classificationInput.value;
@@ -499,32 +498,28 @@ export function actuallySendMessage(finalMessageToSend) {
       image_generation: imageGenEnabled,
       doc_scope: docScopeSelect ? docScopeSelect.value : "all",
       active_group_id: window.activeGroupId,
-      model_deployment: modelDeployment
+      model_deployment: modelDeployment,
     }),
   })
     .then((response) => {
       if (!response.ok) {
-        // Handle non-OK responses, try to parse JSON error
         return response
           .json()
           .then((errData) => {
-            // Throw an error object including the status and parsed data
             const error = new Error(
               errData.error || `HTTP error! status: ${response.status}`
             );
             error.status = response.status;
-            error.data = errData; // Attach full error data
+            error.data = errData;
             throw error;
           })
           .catch(() => {
-            // If JSON parsing fails, throw a generic error
             throw new Error(`HTTP error! status: ${response.status}`);
           });
       }
-      return response.json(); // Parse JSON for successful responses
+      return response.json();
     })
     .then((data) => {
-      // Only successful responses reach here
       hideLoadingIndicatorInChatbox();
 
       console.log("--- Data received from /api/chat ---");
@@ -537,19 +532,17 @@ export function actuallySendMessage(finalMessageToSend) {
       console.log(`data.message_id: ${data.message_id}`);
 
       if (data.reply) {
-        // *** Pass the new fields to appendMessage ***
         appendMessage(
           "AI",
           data.reply,
           data.model_deployment_name,
           data.message_id,
-          data.augmented, // Pass augmented flag
-          data.hybrid_citations, // Pass hybrid citations
-          data.web_search_citations // Pass web citations
+          data.augmented,
+          data.hybrid_citations,
+          data.web_search_citations
         );
       }
       if (data.image_url) {
-        // Assuming image messages don't have citations in this flow
         appendMessage(
           "image",
           data.image_url,
@@ -558,15 +551,13 @@ export function actuallySendMessage(finalMessageToSend) {
         );
       }
 
-      // Update conversation list item and header if needed
       if (data.conversation_id) {
-        currentConversationId = data.conversation_id; // Update current ID
+        currentConversationId = data.conversation_id;
         const convoItem = document.querySelector(
           `.conversation-item[data-conversation-id="${currentConversationId}"]`
         );
         if (convoItem) {
           let updated = false;
-          // Update Title
           if (
             data.conversation_title &&
             convoItem.getAttribute("data-conversation-title") !==
@@ -580,9 +571,7 @@ export function actuallySendMessage(finalMessageToSend) {
             if (titleEl) titleEl.textContent = data.conversation_title;
             updated = true;
           }
-          // Update Classifications
           if (data.classification) {
-            // Check if API returned classification
             const currentClassificationJson =
               convoItem.dataset.classifications || "[]";
             const newClassificationJson = JSON.stringify(data.classification);
@@ -591,7 +580,6 @@ export function actuallySendMessage(finalMessageToSend) {
               updated = true;
             }
           }
-          // Update Timestamp (optional, could be done on load)
           const dateEl = convoItem.querySelector("small");
           if (dateEl)
             dateEl.textContent = new Date().toLocaleString([], {
@@ -600,16 +588,15 @@ export function actuallySendMessage(finalMessageToSend) {
             });
 
           if (updated) {
-            selectConversation(currentConversationId); // Re-select to update header
+            selectConversation(currentConversationId);
           }
         } else {
-          // New conversation case
           addConversationToList(
             currentConversationId,
             data.conversation_title,
             data.classification || []
           );
-          selectConversation(currentConversationId); // Select the newly added one
+          selectConversation(currentConversationId);
         }
       }
     })
@@ -617,9 +604,7 @@ export function actuallySendMessage(finalMessageToSend) {
       hideLoadingIndicatorInChatbox();
       console.error("Error sending message:", error);
 
-      // Display specific error messages based on status or content
       if (error.status === 403 && error.data) {
-        // Check for status and data from thrown error
         const categories = (error.data.triggered_categories || [])
           .map((catObj) => `${catObj.category} (severity=${catObj.severity})`)
           .join(", ");
@@ -628,15 +613,14 @@ export function actuallySendMessage(finalMessageToSend) {
           : error.data.reason;
 
         appendMessage(
-          "safety", // Use 'safety' sender type
+          "safety",
           `Your message was blocked by Content Safety.\n\n` +
             `**Categories triggered**: ${categories}\n` +
             `**Reason**: ${reasonMsg}`,
-          null, // No model name for safety message
-          error.data.message_id // Use message_id if provided in error
+          null,
+          error.data.message_id
         );
       } else {
-        // Show specific embedding error if present, or if status is 500 (embedding backend error)
         const errMsg = (error.message || "").toLowerCase();
         if (errMsg.includes("embedding") || error.status === 500) {
           appendMessage(
@@ -644,7 +628,6 @@ export function actuallySendMessage(finalMessageToSend) {
             "There was an issue with the embedding process. Please check with an admin on embedding configuration."
           );
         } else {
-          // General error message
           appendMessage(
             "Error",
             `Could not get a response. ${error.message || ""}`
@@ -654,12 +637,287 @@ export function actuallySendMessage(finalMessageToSend) {
     });
 }
 
+/* === NEW: Streaming sender (NDJSON) — true interrupt + citations on done === */
+async function actuallySendMessageStream(finalMessageToSend) {
+  const modelDeployment = modelSelect?.value;
+
+  appendMessage("You", finalMessageToSend);
+  userInput.value = "";
+  userInput.style.height = "";
+  showLoadingIndicatorInChatbox();
+  setInFlightState(true);
+
+  currentChatAbortController = new AbortController();
+
+  let hybridSearchEnabled = false;
+  const sdbtn = document.getElementById("search-documents-btn");
+  if (sdbtn && sdbtn.classList.contains("active")) {
+    hybridSearchEnabled = true;
+  }
+
+  let selectedDocumentId = null;
+  let classificationsToSend = null;
+  const docSel = document.getElementById("document-select");
+  const classificationInput = document.getElementById("classification-select");
+
+  if (docSel) {
+    const selectedDocOption = docSel.options[docSel.selectedIndex];
+    selectedDocumentId =
+      selectedDocOption && selectedDocOption.value !== ""
+        ? selectedDocOption.value
+        : null;
+  }
+
+  if (classificationInput) {
+    classificationsToSend =
+      classificationInput.value === "N/A" ? null : classificationInput.value;
+  }
+
+  let bingSearchEnabled = false;
+  const wbbtn = document.getElementById("search-web-btn");
+  if (wbbtn && wbbtn.classList.contains("active")) {
+    bingSearchEnabled = true;
+  }
+
+  let imageGenEnabled = false;
+  const igbtn = document.getElementById("image-generate-btn");
+  if (igbtn && igbtn.classList.contains("active")) {
+    imageGenEnabled = true;
+  }
+
+  const body = {
+    message: finalMessageToSend,
+    conversation_id: currentConversationId,
+    hybrid_search: hybridSearchEnabled,
+    selected_document_id: selectedDocumentId,
+    classifications: classificationsToSend,
+    bing_search: bingSearchEnabled,
+    image_generation: imageGenEnabled,
+    doc_scope: docScopeSelect ? docScopeSelect.value : "all",
+    active_group_id: window.activeGroupId,
+    model_deployment: modelDeployment,
+  };
+
+  // Create an empty AI message to stream into
+  const aiNode = appendMessage("AI", "", modelDeployment, null, false, [], []);
+  const textContainer = aiNode?.querySelector(".message-text");
+  const bubble = aiNode?.querySelector(".message-bubble");
+  const footer = aiNode?.querySelector(".message-footer");
+  const copyBtn = aiNode?.querySelector(".copy-btn");
+  const hiddenId = copyBtn?.getAttribute("data-hidden-text-id");
+  const hiddenTextarea = hiddenId ? document.getElementById(hiddenId) : null;
+
+  // Accumulate full text for final Markdown render
+  let streamedText = "";
+  // Track whether we refreshed the left conversation list
+  let didRefreshConvos = false; // <-- ADDED
+
+  try {
+    const resp = await fetch("/api/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: currentChatAbortController.signal,
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      pending += decoder.decode(value, { stream: true });
+
+      let nl;
+      while ((nl = pending.indexOf("\n")) >= 0) {
+        const line = pending.slice(0, nl).trim();
+        pending = pending.slice(nl + 1);
+        if (!line) continue;
+
+        let evt;
+        try {
+          evt = JSON.parse(line);
+        } catch {
+          continue;
+        }
+
+        if (evt.type === "meta") {
+          // Update conversation / title immediately
+          if (evt.conversation_id) {
+            currentConversationId = evt.conversation_id;
+          }
+          if (evt.conversation_title) {
+            const convoItem = document.querySelector(
+              `.conversation-item[data-conversation-id="${currentConversationId}"]`
+            );
+            if (convoItem) {
+              convoItem.setAttribute(
+                "data-conversation-title",
+                evt.conversation_title
+              );
+              const titleEl = convoItem.querySelector(".conversation-title");
+              if (titleEl) titleEl.textContent = evt.conversation_title;
+            } else {
+              addConversationToList(
+                currentConversationId,
+                evt.conversation_title,
+                evt.classification || []
+              );
+            }
+            selectConversation(currentConversationId);
+          }
+        } else if (evt.type === "token") {
+          if (evt.token) {
+            streamedText += evt.token;
+            // Append as plain text while streaming for performance
+            if (textContainer) {
+              textContainer.insertAdjacentText("beforeend", evt.token);
+              try {
+                scrollChatToBottom();
+              } catch {}
+            }
+            if (hiddenTextarea) {
+              hiddenTextarea.value = streamedText;
+            }
+          }
+        } else if (evt.type === "image") {
+          // Optional: ignore for now
+        } else if (evt.type === "error") {
+          appendMessage("Error", evt.message || "Streaming failed.");
+        } else if (evt.type === "done") {
+          // Finalize: render Markdown and insert citations (if any)
+          const cleaned = (streamedText || "")
+            .trim()
+            .replace(/\n{3,}/g, "\n\n")
+            .replace(/(\bhttps?:\/\/\S+)(%5D|\])+/gi, (_, url) => url);
+          const withInlineCitations = parseCitations(cleaned);
+          const finalHtml = DOMPurify.sanitize(marked.parse(withInlineCitations));
+          if (textContainer) {
+            textContainer.innerHTML = finalHtml; // Replace plain text with formatted HTML
+            attachCodeBlockCopyButtons(textContainer);
+          }
+          if (hiddenTextarea) {
+            hiddenTextarea.value = withInlineCitations; // Keep markdown-copy in sync
+          }
+
+          // Inject citations toggle if augmentation present
+          const augmented = !!evt.augmented;
+          const hybridCitations = evt.hybrid_citations || [];
+          const webCitations = evt.web_search_citations || [];
+          const messageId =
+            evt.message_id || aiNode?.getAttribute("data-message-id");
+
+          if (
+            augmented &&
+            (hybridCitations.length || webCitations.length) &&
+            bubble
+          ) {
+            // Avoid duplicating if already present
+            let existingCitations = bubble.querySelector(".citations-container");
+            let existingToggle = bubble.querySelector(".citation-toggle-btn");
+            if (!existingCitations && !existingToggle) {
+              const citationsButtonsHtml = createCitationsHtml(
+                hybridCitations,
+                webCitations,
+                messageId
+              );
+              const containerId = `citations-${messageId || Date.now()}`;
+              const citationContent = document.createElement("div");
+              citationContent.className =
+                "citations-container mt-2 pt-2 border-top";
+              citationContent.id = containerId;
+              citationContent.style.display = "none";
+              citationContent.innerHTML = citationsButtonsHtml;
+
+              // Place citations block before footer
+              if (footer) {
+                bubble.insertBefore(citationContent, footer);
+              } else {
+                bubble.appendChild(citationContent);
+              }
+
+              // Add toggle button into footer (create one if footer missing)
+              let footerEl = footer;
+              if (!footerEl) {
+                footerEl = document.createElement("div");
+                footerEl.className =
+                  "message-footer d-flex justify-content-between align-items-center";
+                bubble.appendChild(footerEl);
+              }
+              const toggleWrap = document.createElement("div");
+              toggleWrap.className = "citation-toggle-container";
+              toggleWrap.innerHTML = `<button class="btn btn-sm btn-outline-secondary citation-toggle-btn" title="Show sources" aria-expanded="false" aria-controls="${containerId}"><i class="bi bi-journal-text"></i></button>`;
+              footerEl.appendChild(toggleWrap);
+
+              const toggleBtn = toggleWrap.querySelector(".citation-toggle-btn");
+              toggleBtn?.addEventListener("click", () => {
+                const citationsContainer =
+                  bubble.querySelector(`#${containerId}`);
+                if (!citationsContainer) return;
+                const isExpanded =
+                  citationsContainer.style.display !== "none";
+                citationsContainer.style.display = isExpanded ? "none" : "block";
+                toggleBtn.setAttribute("aria-expanded", !isExpanded);
+                toggleBtn.title = isExpanded ? "Show sources" : "Hide sources";
+                toggleBtn.innerHTML = isExpanded
+                  ? '<i class="bi bi-journal-text"></i>'
+                  : '<i class="bi bi-chevron-up"></i>';
+                if (!isExpanded) {
+                  try {
+                    scrollChatToBottom();
+                  } catch {}
+                }
+              });
+            }
+          }
+
+          // *** NEW: Refresh the conversation list once the stream completes ***
+          try {
+            if (!didRefreshConvos) {
+              await loadConversations();
+              didRefreshConvos = true;
+            }
+          } catch (e) {
+            console.warn("loadConversations() failed:", e);
+          }
+
+          // End request state on 'done'
+          setInFlightState(false);
+        }
+      }
+    }
+  } catch (error) {
+    const wasAborted =
+      error &&
+      (error.name === "AbortError" || /aborted/i.test(String(error.message)));
+    if (wasAborted) {
+      showToast("Generation stopped.", "warning");
+    } else {
+      appendMessage("Error", `Could not get a response. ${error.message || ""}`);
+    }
+  } finally {
+    hideLoadingIndicatorInChatbox();
+    setInFlightState(false);
+    currentChatAbortController = null;
+
+    // Safety refresh if we never got to 'done'
+    try {
+      if (typeof didRefreshConvos !== "undefined" && !didRefreshConvos) {
+        await loadConversations();
+      }
+    } catch {}
+  }
+}
+
 function attachCodeBlockCopyButtons(parentElement) {
-  if (!parentElement) return; // Add guard clause
+  if (!parentElement) return;
   const codeBlocks = parentElement.querySelectorAll("pre code");
   codeBlocks.forEach((codeBlock) => {
     const pre = codeBlock.parentElement;
-    if (pre.querySelector(".copy-code-btn")) return; // Don't add if already exists
+    if (pre.querySelector(".copy-code-btn")) return;
 
     pre.style.position = "relative";
     const copyBtn = document.createElement("button");
@@ -669,17 +927,17 @@ function attachCodeBlockCopyButtons(parentElement) {
       "btn",
       "btn-sm",
       "btn-outline-secondary"
-    ); // Add Bootstrap classes
+    );
     copyBtn.title = "Copy code";
     copyBtn.style.position = "absolute";
     copyBtn.style.top = "5px";
     copyBtn.style.right = "5px";
-    copyBtn.style.lineHeight = "1"; // Prevent extra height
-    copyBtn.style.padding = "0.15rem 0.3rem"; // Smaller padding
+    copyBtn.style.lineHeight = "1";
+    copyBtn.style.padding = "0.15rem 0.3rem";
 
     copyBtn.addEventListener("click", (e) => {
-      e.stopPropagation(); // Prevent clicks bubbling up
-      const codeToCopy = codeBlock.innerText; // Use innerText to get rendered text
+      e.stopPropagation();
+      const codeToCopy = codeBlock.innerText;
       navigator.clipboard
         .writeText(codeToCopy)
         .then(() => {
@@ -700,44 +958,54 @@ function attachCodeBlockCopyButtons(parentElement) {
 }
 
 if (sendBtn) {
-  sendBtn.addEventListener("click", sendMessage);
+  sendBtn.addEventListener("click", () => {
+    if (isRequestInFlight) {
+      try {
+        currentChatAbortController?.abort();
+      } catch {}
+      hideLoadingIndicatorInChatbox();
+      setInFlightState(false);
+      return;
+    }
+    sendMessage();
+  });
 }
 
 if (userInput) {
   userInput.addEventListener("keydown", function (e) {
-    // Check if Enter key is pressed
     if (e.key === "Enter") {
-      // Check if Shift key is NOT pressed
       if (!e.shiftKey) {
-        // Prevent default behavior (inserting a newline)
         e.preventDefault();
-        // Send the message
+        if (isRequestInFlight) {
+          try {
+            currentChatAbortController?.abort();
+          } catch {}
+          hideLoadingIndicatorInChatbox();
+          setInFlightState(false);
+          return;
+        }
         sendMessage();
       }
-      // If Shift key IS pressed, do nothing - allow the default behavior (inserting a newline)
     }
   });
 }
 
-// Save the selected model when it changes
 if (modelSelect) {
-  modelSelect.addEventListener("change", function() {
+  modelSelect.addEventListener("change", function () {
     const selectedModel = modelSelect.value;
     console.log(`Saving preferred model: ${selectedModel}`);
-    saveUserSetting({ 'preferredModelDeployment': selectedModel });
+    saveUserSetting({ preferredModelDeployment: selectedModel });
   });
 }
 
-
 /* ===========================
    Next-word Ghost Suggestion
-   (additive, no changes above)
    =========================== */
 (() => {
-  const inputEl = userInput; // already exported above
+  const inputEl = userInput;
   const overlayEl = document.getElementById("ghost-overlay");
 
-  if (!inputEl || !overlayEl) return; // quietly no-op if HTML not present
+  if (!inputEl || !overlayEl) return;
 
   let debounceId = null;
   let currentSuggestion = "";
@@ -747,9 +1015,7 @@ if (modelSelect) {
   const atEnd = (el) =>
     el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
 
-  // Render: mirror typed text (transparent) + suggested word (light grey)
   function renderOverlay(prefix, suggestion) {
-    // Keep typed mirror transparent inline so it works even before CSS is added
     const typedSpan = `<span class="typed" style="color: transparent;">${escapeHtml(
       prefix
     )}</span>`;
@@ -759,8 +1025,6 @@ if (modelSelect) {
         )}</span>`
       : "";
     overlayEl.innerHTML = typedSpan + sugSpan;
-
-    // Show overlay if there's any text; otherwise hide for cleanliness
     overlayEl.style.visibility = prefix || suggestion ? "visible" : "hidden";
   }
 
@@ -781,7 +1045,7 @@ if (modelSelect) {
 
   function shouldQuery(prefix) {
     if (!prefix || prefix.length < 3) return false;
-    if (!/\w$/.test(prefix)) return false; // only on word-ish boundary
+    if (!/\w$/.test(prefix)) return false;
     if (prefix === lastPrefixSent) return false;
     return true;
   }
@@ -793,7 +1057,6 @@ if (modelSelect) {
 
   function maybeQuery() {
     const prefix = inputEl.value || "";
-    // if caret not at end or not a good time to query, just mirror typed text
     if (!atEnd(inputEl) || !shouldQuery(prefix)) {
       currentSuggestion = "";
       renderOverlay(prefix, "");
@@ -809,15 +1072,15 @@ if (modelSelect) {
     }, DEBOUNCE_MS);
   }
 
-  // --- Event wiring ---
-  // Keep overlay mirrored and query as needed
   inputEl.addEventListener("input", maybeQuery);
 
-  // Track caret moves (arrows, mouse) so we hide suggestion when caret isn't at end
   inputEl.addEventListener("keyup", (e) => {
     if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
       if (!atEnd(inputEl)) currentSuggestion = "";
-      renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
+      renderOverlay(
+        inputEl.value || "",
+        atEnd(inputEl) ? currentSuggestion : ""
+      );
     }
   });
   inputEl.addEventListener("click", () => {
@@ -827,14 +1090,16 @@ if (modelSelect) {
     renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
   });
 
-  // Accept suggestion with Tab or Right Arrow; clear with Escape
   inputEl.addEventListener("keydown", (e) => {
-    if (currentSuggestion && atEnd(inputEl) && (e.key === "Tab" || e.key === "ArrowRight")) {
+    if (
+      currentSuggestion &&
+      atEnd(inputEl) &&
+      (e.key === "Tab" || e.key === "ArrowRight")
+    ) {
       e.preventDefault();
       inputEl.value = (inputEl.value || "") + currentSuggestion;
       currentSuggestion = "";
       renderOverlay(inputEl.value, "");
-      // re-trigger the textarea's auto-resize logic bound to 'input'
       inputEl.dispatchEvent(new Event("input", { bubbles: true }));
       return;
     }
@@ -842,17 +1107,14 @@ if (modelSelect) {
       clearSuggestion();
       return;
     }
-    // When sending (Enter without Shift), clear the overlay but let existing handler send
     if (e.key === "Enter" && !e.shiftKey) {
       clearSuggestion();
     }
   });
 
-  // Also clear when clicking the Send button
   if (sendBtn) {
     sendBtn.addEventListener("click", clearSuggestion);
   }
 
-  // Initial paint
   renderOverlay(inputEl.value || "", "");
 })();
