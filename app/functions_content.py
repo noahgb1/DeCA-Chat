@@ -124,17 +124,65 @@ def extract_content_with_azure_di(file_path):
 
 
 def extract_table_file(file_path, file_ext):
+    """
+    Extract tabular content from CSV/XLS/XLSX files as HTML.
+
+    - CSV: single DataFrame -> HTML table with a <caption> matching file stem,
+      and a plain-text header line ("FILE: <name>") before the table.
+    - Excel: concatenate one HTML table per sheet, each with a <caption> = sheet name,
+      and a plain-text header line ("SHEET: <name>") before each table.
+    """
+    # Local imports keep this a surgical change without touching module imports.
+    import os
+    from html import escape
+
     try:
-        if file_ext == '.csv':
+        ext = (file_ext or "").lower()
+
+        if ext == ".csv":
+            # Preserve existing CSV behavior but add caption + plain-text header for parity.
             df = pd.read_csv(file_path)
-        elif file_ext in ['.xls', '.xlsx']:
-            df = pd.read_excel(file_path)
+            table_html = df.to_html(index=False, classes="table table-striped table-bordered")
+
+            # Compute stem regardless of whether we find <thead>
+            stem = os.path.splitext(os.path.basename(file_path))[0]
+
+            # Insert an HTML <caption> just before the first <thead>
+            insert_at = table_html.find("<thead>")
+            if insert_at != -1:
+                caption = f'  <caption>{escape(stem)}</caption>\n '
+                table_html = table_html[:insert_at] + caption + table_html[insert_at:]
+
+            # Add a plain-text section header BEFORE the table for LLM context
+            header = f'<p><strong>FILE: {escape(stem)}</strong></p>\n'
+            return header + table_html
+
+        elif ext in [".xls", ".xlsx"]:
+            xls = pd.ExcelFile(file_path)
+            parts = []
+
+            for sheet_name in xls.sheet_names:
+                df = xls.parse(sheet_name)
+                html_table = df.to_html(index=False, classes="table table-striped table-bordered")
+
+                # Insert <caption> before <thead>
+                insert_at = html_table.find("<thead>")
+                if insert_at != -1:
+                    caption = f'  <caption>{escape(sheet_name)}</caption>\n '
+                    html_table = html_table[:insert_at] + caption + html_table[insert_at:]
+
+                # Add a plain-text section header BEFORE the table
+                header = f'<p><strong>SHEET: {escape(sheet_name)}</strong></p>\n'
+                parts.append(header + html_table)
+
+            # Join all sheet sections
+            return "".join(parts)
+
         else:
             raise ValueError("Unsupported file extension for table extraction.")
-        
-        table_html = df.to_html(index=False, classes='table table-striped table-bordered')
-        return table_html
-    except Exception as e:
+
+    except Exception:
+        # Let upstream handlers/logging capture details
         raise
 
 def extract_pdf_metadata(pdf_path):

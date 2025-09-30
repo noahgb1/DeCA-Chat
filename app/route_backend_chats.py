@@ -387,6 +387,9 @@ Assistant: The policy prohibits entities from using federal funds received throu
                 for source_doc in combined_documents:
                     citation_data = {
                         "file_name": source_doc.get("file_name"),
+            ####noah changed this####
+            "sheet_name": r.get("sheet_name") if isinstance(r, dict) else getattr(r, "sheet_name", None),
+            ######
                         "citation_id": source_doc.get("citation_id"),
                         "page_number": source_doc.get("page_number"),
                         "chunk_id": source_doc.get("chunk_id"),
@@ -422,6 +425,9 @@ Assistant: The policy prohibits entities from using federal funds received throu
                     citation = f"(Source: {title}) [{url}]"
                     retrieved_texts_bing.append(f"{snippet}\n{citation}")
                     bing_citation_data = {
+            ####noah changed this####
+            "sheet_name": r.get("sheet_name") if isinstance(r, dict) else getattr(r, "sheet_name", None),
+            ######
                         "title": title,
                         "url": url,
                         "snippet": snippet

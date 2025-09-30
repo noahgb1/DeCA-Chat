@@ -33,8 +33,10 @@ def hybrid_search(query, user_id, document_id=None, top_n=12, doc_scope="all", a
                 semantic_configuration_name="nexus-user-index-semantic-configuration",
                 query_caption="extractive",
                 query_answer="extractive",
-                select=["id", "chunk_text", "chunk_id", "file_name", "user_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary"]
+                ####noah changed this####
+                select=["id", "chunk_text", "chunk_id", "file_name", "user_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary", "sheet_name"]
             )
+            ########
 
             group_results = search_client_group.search(
                 search_text=query,
@@ -44,8 +46,10 @@ def hybrid_search(query, user_id, document_id=None, top_n=12, doc_scope="all", a
                 semantic_configuration_name="nexus-group-index-semantic-configuration",
                 query_caption="extractive",
                 query_answer="extractive",
-                select=["id", "chunk_text", "chunk_id", "file_name", "group_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary"]
+                ####noah changed this####
+                select=["id", "chunk_text", "chunk_id", "file_name", "group_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary", "sheet_name"]
             )
+            #########
         else:
             user_results = search_client_user.search(
                 search_text=query,
@@ -55,8 +59,10 @@ def hybrid_search(query, user_id, document_id=None, top_n=12, doc_scope="all", a
                 semantic_configuration_name="nexus-user-index-semantic-configuration",
                 query_caption="extractive",
                 query_answer="extractive",
-                select=["id", "chunk_text", "chunk_id", "file_name", "user_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary"]
+                ####noah changed this####
+                select=["id", "chunk_text", "chunk_id", "file_name", "user_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary", "sheet_name"]
             )
+            ################
 
             group_results = search_client_group.search(
                 search_text=query,
@@ -66,8 +72,10 @@ def hybrid_search(query, user_id, document_id=None, top_n=12, doc_scope="all", a
                 semantic_configuration_name="nexus-group-index-semantic-configuration",
                 query_caption="extractive",
                 query_answer="extractive",
-                select=["id", "chunk_text", "chunk_id", "file_name", "group_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary"]
+                ####noah changed this####
+                select=["id", "chunk_text", "chunk_id", "file_name", "group_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary", "sheet_name"]
             )
+            ##################
 
         user_results_final = extract_search_results(user_results, top_n)
         group_results_final = extract_search_results(group_results, top_n)
@@ -83,7 +91,9 @@ def hybrid_search(query, user_id, document_id=None, top_n=12, doc_scope="all", a
                 semantic_configuration_name="nexus-user-index-semantic-configuration",
                 query_caption="extractive",
                 query_answer="extractive",
-                select=["id", "chunk_text", "chunk_id", "file_name", "user_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary"]
+                ####noah changed this####
+                select=["id", "chunk_text", "chunk_id", "file_name", "user_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary", "sheet_name"]
+           #################
             )
             results = extract_search_results(user_results, top_n)
         else:
@@ -95,8 +105,10 @@ def hybrid_search(query, user_id, document_id=None, top_n=12, doc_scope="all", a
                 semantic_configuration_name="nexus-user-index-semantic-configuration",
                 query_caption="extractive",
                 query_answer="extractive",
-                select=["id", "chunk_text", "chunk_id", "file_name", "user_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary"]
+                ####noah changed this####
+                select=["id", "chunk_text", "chunk_id", "file_name", "user_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary", "sheet_name"]
             )
+            #########
             results = extract_search_results(user_results, top_n)
 
     elif doc_scope == "group":
@@ -109,8 +121,10 @@ def hybrid_search(query, user_id, document_id=None, top_n=12, doc_scope="all", a
                 semantic_configuration_name="nexus-group-index-semantic-configuration",
                 query_caption="extractive",
                 query_answer="extractive",
-                select=["id", "chunk_text", "chunk_id", "file_name", "group_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary"]
+                ####noah changed this####
+                select=["id", "chunk_text", "chunk_id", "file_name", "group_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary", "sheet_name"]
             )
+            ##########
             results = extract_search_results(group_results, top_n)
         else:
             group_results = search_client_group.search(
@@ -121,8 +135,10 @@ def hybrid_search(query, user_id, document_id=None, top_n=12, doc_scope="all", a
                 semantic_configuration_name="nexus-group-index-semantic-configuration",
                 query_caption="extractive",
                 query_answer="extractive",
-                select=["id", "chunk_text", "chunk_id", "file_name", "group_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary"]
+                ####noah changed this####
+                select=["id", "chunk_text", "chunk_id", "file_name", "group_id", "version", "chunk_sequence", "upload_date", "document_classification", "page_number", "author", "chunk_keywords", "title", "chunk_summary", "sheet_name"]
             )
+            ###############
             results = extract_search_results(group_results, top_n)
     
     results = sorted(results, key=lambda x: x['score'], reverse=True)[:top_n]
@@ -148,7 +164,10 @@ def extract_search_results(paged_results, top_n):
             "author": r["author"],
             "chunk_keywords": r["chunk_keywords"],
             "title": r["title"],
+            # ####noah changed this####
             "chunk_summary": r["chunk_summary"],
+            "sheet_name": r.get("sheet_name"),
+            # ######
             "score": r["@search.score"]
         })
     return extracted

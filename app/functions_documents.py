@@ -6,6 +6,8 @@ from functions_settings import *
 from functions_search import *
 from functions_logging import *
 from functions_authentication import *
+import re
+import hashlib
 
 def allowed_file(filename, allowed_extensions=None):
     if not allowed_extensions:
@@ -733,6 +735,11 @@ def save_chunks(page_text_content, page_number, file_name, user_id, document_id,
         print(f"Error updating document status or retrieving metadata for document {document_id}: {repr(e)}\nTraceback:\n{traceback.format_exc()}")
         raise
 
+    ####noah changed this####
+    # Heuristic: extract sheet name from the first 200 chars when present like "[Sheet: <name>]".
+    sheet_name_match = re.search(r"\[\s*Sheet\s*:\s*([^\]]+)\]", page_text_content[:200] or "")
+    sheet_name = sheet_name_match.group(1).strip() if sheet_name_match else ""
+    ######
     # Generate embedding
     try:
         #status = f"Generating embedding for page {page_number}"
@@ -744,7 +751,10 @@ def save_chunks(page_text_content, page_number, file_name, user_id, document_id,
 
     # Build chunk document
     try:
-        chunk_id = f"{document_id}_{page_number}"
+        ####noah changed this####
+        # Collision-proof chunk id across sheets/pages
+        chunk_id = f"{document_id}_" + hashlib.sha1(f"{sheet_name}|{page_number}|{file_name}".encode("utf-8")).hexdigest()[:16]
+        ######
         chunk_keywords = []
         chunk_summary = ""
         author = []
@@ -754,10 +764,15 @@ def save_chunks(page_text_content, page_number, file_name, user_id, document_id,
             chunk_document = {
                 "id": chunk_id,
                 "document_id": document_id,
-                "chunk_id": str(page_number),
+                ####noah changed this####
+                "chunk_id": f"{sheet_name}_{page_number}" if sheet_name else str(page_number),
+                ######
                 "chunk_text": page_text_content,
                 "embedding": embedding,
                 "file_name": file_name,
+                ####noah changed this####
+                "sheet_name": sheet_name,
+                ######
                 "chunk_keywords": chunk_keywords,
                 "chunk_summary": chunk_summary,
                 "page_number": page_number,
@@ -773,10 +788,15 @@ def save_chunks(page_text_content, page_number, file_name, user_id, document_id,
             chunk_document = {
                 "id": chunk_id,
                 "document_id": document_id,
-                "chunk_id": str(page_number),
+                ####noah changed this####
+                "chunk_id": f"{sheet_name}_{page_number}" if sheet_name else str(page_number),
+                ######
                 "chunk_text": page_text_content,
                 "embedding": embedding,
                 "file_name": file_name,
+                ####noah changed this####
+                "sheet_name": sheet_name,
+                ######
                 "chunk_keywords": chunk_keywords,
                 "chunk_summary": chunk_summary,
                 "page_number": page_number,
