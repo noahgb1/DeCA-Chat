@@ -261,9 +261,9 @@
                         {% endif %}
                         </select>
                     </div>
-
                     <button class="btn btn-primary flex-shrink-0" id="send-btn" title="Send Message">
-                        <i class="bi bi-send-fill"></i> <span class="d-none d-sm-inline">Send</span>
+                        <i class="bi bi-send-fill" data-icon></i>
+                        <span class="d-none d-sm-inline" data-label>Send</span>
                     </button>
                 </div>
             </div>
@@ -317,6 +317,12 @@
     const USER_SETTINGS_KEY_LAYOUT = 'layoutPreference';
     const USER_SETTINGS_KEY_SPLIT = 'splitSizesPreference';
 </script>
+
+<script>
+  // turn on streaming so the client uses /api/chat/stream
+  window.USE_STREAMING = true;
+</script>
+
 <script src="{{ url_for('static', filename='js/chat/chat-global.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/chat/chat-layout.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/chat/chat-utils.js') }}"></script>

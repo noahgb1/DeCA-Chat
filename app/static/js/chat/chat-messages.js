@@ -36,8 +36,8 @@ function setInFlightState(inFlight) {
 
   // Morph the single button between Send and Stop
   if (sendBtn) {
-    const icon = sendBtn.querySelector("[data-icon]");
-    const label = sendBtn.querySelector("[data-label]");
+    const icon  = sendBtn.querySelector("[data-icon]")  || sendBtn.querySelector("i");
+    const label = sendBtn.querySelector("[data-label]") || sendBtn.querySelector("span");
     if (inFlight) {
       sendBtn.classList.remove("btn-primary");
       sendBtn.classList.add("btn-outline-danger");
@@ -52,6 +52,15 @@ function setInFlightState(inFlight) {
       if (label) label.textContent = "Send";
     }
   }
+}
+
+// Safely call the classic-script global from a module
+function safeScrollToBottom() {
+  try {
+    if (typeof window.scrollChatToBottom === "function") {
+      window.scrollChatToBottom();
+    }
+  } catch {}
 }
 
 function createCitationsHtml(
@@ -107,6 +116,12 @@ function createCitationsHtml(
 }
 
 export function loadMessages(conversationId) {
+  // **Guard**: don't wipe/replace the chatbox while a stream is in-flight.
+  if (isRequestInFlight) {
+    console.debug("[loadMessages] Skipped reload because a stream is in-flight.");
+    return;
+  }
+
   fetch(`/conversation/${conversationId}/messages`)
     .then((response) => response.json())
     .then((data) => {
@@ -310,12 +325,12 @@ export function appendMessage(
           ? '<i class="bi bi-journal-text"></i>'
           : '<i class="bi bi-chevron-up"></i>';
         if (!isExpanded) {
-          scrollChatToBottom();
+          safeScrollToBottom();
         }
       });
     }
 
-    scrollChatToBottom();
+    safeScrollToBottom();
     return messageDiv; // allow streaming updates
   } else {
     // Determine variables based on sender type
@@ -387,7 +402,7 @@ export function appendMessage(
             </div>`;
 
     chatbox.appendChild(messageDiv);
-    scrollChatToBottom();
+    safeScrollToBottom();
   }
 }
 
@@ -745,7 +760,7 @@ async function actuallySendMessageStream(finalMessageToSend) {
         }
 
         if (evt.type === "meta") {
-          // Update conversation / title immediately
+          // Update conversation / title immediately but DO NOT reload messages during stream
           if (evt.conversation_id) {
             currentConversationId = evt.conversation_id;
           }
@@ -767,7 +782,8 @@ async function actuallySendMessageStream(finalMessageToSend) {
                 evt.classification || []
               );
             }
-            selectConversation(currentConversationId);
+            // ❌ Avoid selectConversation(currentConversationId) here;
+            // it would call loadMessages() and wipe the streaming bubble.
           }
         } else if (evt.type === "token") {
           if (evt.token) {
@@ -776,7 +792,7 @@ async function actuallySendMessageStream(finalMessageToSend) {
             if (textContainer) {
               textContainer.insertAdjacentText("beforeend", evt.token);
               try {
-                scrollChatToBottom();
+                safeScrollToBottom();
               } catch {}
             }
             if (hiddenTextarea) {
@@ -867,7 +883,7 @@ async function actuallySendMessageStream(finalMessageToSend) {
                   : '<i class="bi bi-chevron-up"></i>';
                 if (!isExpanded) {
                   try {
-                    scrollChatToBottom();
+                    safeScrollToBottom();
                   } catch {}
                 }
               });
@@ -1045,7 +1061,7 @@ if (modelSelect) {
 
   function shouldQuery(prefix) {
     if (!prefix || prefix.length < 3) return false;
-    if (!/\w$/.test(prefix)) return false;
+    if (!/\\w$/.test(prefix)) return false;
     if (prefix === lastPrefixSent) return false;
     return true;
   }

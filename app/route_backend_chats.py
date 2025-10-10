@@ -1,10 +1,22 @@
 # route_backend_chats.py
-
+from flask import request, jsonify, Response, stream_with_context
 from config import *
 from functions_authentication import *
 from functions_search import *
 from functions_bing_search import *
 from functions_settings import *
+from functions_tabular import tabular_plan_and_execute, should_run_tabular, analyze_or_aggregate 
+
+# Add this helper function near your imports
+def is_numeric_intent(prompt: str) -> bool:
+    p = f" {prompt.lower()} "
+    triggers = [
+        "average ", " avg ", " mean ", " sum ", " total ", " count ", " rows ",
+        " how many ", " median", " min ", " max ", " standard deviation", " std ",
+        " variance", " percentile", " group by", " aggregate", " trend", " over time",
+        " timeseries", " time series"
+    ]
+    return any(t in p for t in triggers)
 
 def register_route_backend_chats(app):
     @app.route('/api/chat', methods=['POST'])
@@ -387,9 +399,7 @@ Assistant: The policy prohibits entities from using federal funds received throu
                 for source_doc in combined_documents:
                     citation_data = {
                         "file_name": source_doc.get("file_name"),
-            ####noah changed this####
-            "sheet_name": r.get("sheet_name") if isinstance(r, dict) else getattr(r, "sheet_name", None),
-            ######
+                        "sheet_name": source_doc.get("sheet_name"),
                         "citation_id": source_doc.get("citation_id"),
                         "page_number": source_doc.get("page_number"),
                         "chunk_id": source_doc.get("chunk_id"),
@@ -425,9 +435,7 @@ Assistant: The policy prohibits entities from using federal funds received throu
                     citation = f"(Source: {title}) [{url}]"
                     retrieved_texts_bing.append(f"{snippet}\n{citation}")
                     bing_citation_data = {
-            ####noah changed this####
-            "sheet_name": r.get("sheet_name") if isinstance(r, dict) else getattr(r, "sheet_name", None),
-            ######
+                        "sheet_name": source_doc.get("sheet_name"),
                         "title": title,
                         "url": url,
                         "snippet": snippet
@@ -521,6 +529,29 @@ Assistant: The capital of France is Paris (Source: OfficialFrancePage)
                 }), 500
 
         # ---------------------------------------------------------------------
+        
+        # === Tabular Enrichment (non-stream) ===
+        try:
+            # Use new intent detection for tabular enrichment
+            if should_run_tabular(user_message) or is_numeric_intent(user_message):
+                tabular = tabular_plan_and_execute(
+                    settings=settings,
+                    user_id=user_id,
+                    prompt=user_message,
+                    selected_document_id=selected_document_id,
+                    active_group_id=active_group_id,
+                    timebox_sec=int(settings.get('tabular_timebox_sec', 8))
+                )
+                tabular_content = None
+                if isinstance(tabular, dict):
+                    tabular_content = tabular.get('system_message') or tabular.get('content')
+                elif isinstance(tabular, str):
+                    tabular_content = tabular
+                if tabular_content:
+                    system_messages_for_augmentation.append({ "role": "system", "content": tabular_content })
+        except Exception as e:
+            print(f"[tabular non-stream] enrichment failed: {e}")
+
         # 5) Prepare FINAL conversation history for GPT (including summarization)
         # ---------------------------------------------------------------------
         conversation_history_for_api = []
@@ -712,44 +743,34 @@ Assistant: The capital of France is Paris (Source: OfficialFrancePage)
     @login_required
     @user_required
     def chat_api_stream():
-        """
-        Streaming chat endpoint (NDJSON) with:
-        - true hybrid-search augmentation (workspace scope + selected doc),
-        - direct-to-chat file summaries injected as system context,
-        - Stop support via client abort,
-        - persistence of augmentation metadata.
-        """
-        from flask import Response, stream_with_context
+        """NDJSON streaming endpoint for chat with proper interrupt and citations."""
+        from flask import Response, stream_with_context, jsonify, request
         from werkzeug.exceptions import ClientDisconnected
-
+    
         settings = get_settings()
-        data = request.get_json()
+        data = request.get_json() or {}
         user_id = get_current_user_id()
         if not user_id:
             return jsonify({'error': 'User not authenticated'}), 401
-
-        # Request payload
+    
         user_message = data.get('message', '')
         conversation_id = data.get('conversation_id')
         frontend_gpt_model = data.get('model_deployment')
-
         hybrid_search_enabled = data.get('hybrid_search')
         selected_document_id = data.get('selected_document_id')
         document_scope = data.get('doc_scope')
         active_group_id = data.get('active_group_id')
-
-        # Normalize toggles
+    
         if isinstance(hybrid_search_enabled, str):
             hybrid_search_enabled = hybrid_search_enabled.lower() == 'true'
-
-        # Initialize model/client (reuse logic from /api/chat)
+    
+        # Initialize model / client
         gpt_model = ""
         gpt_client = None
-        enable_gpt_apim = settings.get('enable_gpt_apim', False)
         try:
-            if enable_gpt_apim:
-                raw = settings.get('azure_apim_gpt_deployment', '')
-                apim_models = [m.strip() for m in raw.split(',') if m.strip()] if raw else []
+            if settings.get('enable_gpt_apim', False):
+                raw = settings.get('azure_apim_gpt_deployment', '') or ''
+                apim_models = [m.strip() for m in raw.split(',') if m.strip()]
                 if frontend_gpt_model:
                     if frontend_gpt_model not in apim_models:
                         raise ValueError(f"Requested model '{frontend_gpt_model}' is not configured for APIM.")
@@ -758,7 +779,7 @@ Assistant: The capital of France is Paris (Source: OfficialFrancePage)
                     gpt_model = apim_models[0]
                 else:
                     raise ValueError("Multiple APIM GPT deployments configured; include 'model_deployment' in request.")
-
+    
                 gpt_client = AzureOpenAI(
                     api_version=settings.get('azure_apim_gpt_api_version'),
                     azure_endpoint=settings.get('azure_apim_gpt_endpoint'),
@@ -775,7 +796,7 @@ Assistant: The capital of France is Paris (Source: OfficialFrancePage)
                     gpt_model = gpt_model_obj['selected'][0]['deploymentName']
                 else:
                     raise ValueError("No GPT model selected or configured.")
-
+    
                 if auth_type == 'managed_identity':
                     token_provider = get_bearer_token_provider(DefaultAzureCredential(), cognitive_services_scope)
                     gpt_client = AzureOpenAI(
@@ -792,14 +813,14 @@ Assistant: The capital of France is Paris (Source: OfficialFrancePage)
                         azure_endpoint=endpoint,
                         api_key=api_key
                     )
-
+    
             if not gpt_client or not gpt_model:
                 raise ValueError("GPT Client or Model could not be initialized.")
         except Exception as e:
             print(f"[stream] Error initializing GPT client/model: {e}")
             return jsonify({'error': f'Failed to initialize AI model: {str(e)}'}), 500
-
-        # Load or create conversation
+    
+        # Ensure conversation exists and persist user message
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
             conversation_item = {
@@ -820,280 +841,257 @@ Assistant: The capital of France is Paris (Source: OfficialFrancePage)
                     'title': 'New Conversation'
                 }
                 cosmos_conversations_container.upsert_item(conversation_item)
-            except Exception as e:
-                print(f"[stream] Error reading conversation {conversation_id}: {e}")
-                return jsonify({'error': f'Error reading conversation: {str(e)}'}), 500
-
-        # Append user message
+    
         user_message_id = f"{conversation_id}_user_{int(time.time())}_{random.randint(1000,9999)}"
         cosmos_messages_container.upsert_item({
             'id': user_message_id,
             'conversation_id': conversation_id,
             'role': 'user',
             'content': user_message,
-            'timestamp': datetime.utcnow().isoformat(),
-            'model_deployment_name': None
+            'timestamp': datetime.utcnow().isoformat()
         })
-
-        # Title handling
+    
         if conversation_item.get('title', 'New Conversation') == 'New Conversation' and user_message:
-            new_title = (user_message[:30] + '...') if len(user_message) > 30 else user_message
-            conversation_item['title'] = new_title
+            conversation_item['title'] = (user_message[:30] + '...') if len(user_message) > 30 else user_message
         conversation_item['last_updated'] = datetime.utcnow().isoformat()
         cosmos_conversations_container.upsert_item(conversation_item)
-
-        # Optional content safety (nonfatal path)
+    
+        # Build recent history
         try:
-            if settings.get('enable_content_safety') and "content_safety_client" in CLIENTS:
-                content_safety_client = CLIENTS["content_safety_client"]
-                request_obj = AnalyzeTextOptions(text=user_message)
-                cs_response = content_safety_client.analyze_text(request_obj)
-                max_severity = max([c.severity for c in cs_response.categories_analysis], default=0)
-                if max_severity >= 4:
-                    safety_message_id = f"{conversation_id}_safety_{int(time.time())}_{random.randint(1000,9999)}"
-                    blocked_msg_content = "Your message was blocked by Content Safety (stream)."
-                    cosmos_messages_container.upsert_item({
-                        'id': safety_message_id,
-                        'conversation_id': conversation_id,
-                        'role': 'safety',
-                        'content': blocked_msg_content,
-                        'timestamp': datetime.utcnow().isoformat(),
-                        'model_deployment_name': None
-                    })
-                    return jsonify({'reply': blocked_msg_content, 'blocked': True, 'conversation_id': conversation_id,
-                                    'conversation_title': conversation_item['title'], 'message_id': safety_message_id}), 200
-        except Exception as e:
-            print(f"[stream] Content Safety error (non-fatal): {e}")
-
-        # Build recent history and collect file summaries
-        try:
-            raw_conversation_history_limit = settings.get('conversation_history_limit', 6)
-            conversation_history_limit = int(raw_conversation_history_limit) if raw_conversation_history_limit else 6
-            all_messages = list(cosmos_messages_container.query_items(
+            history_limit = int(settings.get('conversation_history_limit', 6) or 6)
+            all_msgs = list(cosmos_messages_container.query_items(
                 query="SELECT * FROM c WHERE c.conversation_id = @conv_id ORDER BY c.timestamp ASC",
-                parameters=[{"name": "@conv_id", "value": conversation_id}],
+                parameters=[{"name":"@conv_id","value": conversation_id}],
                 partition_key=conversation_id,
                 enable_cross_partition_query=True
             ))
-            recent = all_messages[-conversation_history_limit:]
-
-            # Build compact file summaries from recent messages
-            max_file_preview = 1000
+            recent = all_msgs[-history_limit:]
             file_summaries = []
             for m in recent:
-                if m.get("role") == "file":
-                    fname = m.get("filename", "uploaded_file")
-                    fcontent = m.get("file_content", "")
-                    snippet = fcontent[:max_file_preview]
-                    if len(fcontent) > max_file_preview:
-                        snippet += "..."
+                if m.get('role') == 'file':
+                    fname = m.get('filename', 'uploaded_file')
+                    snippet = (m.get('file_content', '') or '')[:1000]
+                    if len(snippet) == 1000: snippet += '...'
                     file_summaries.append(f"[User uploaded a file named '{fname}'. Content preview:\n{snippet}]\nUse this file context if relevant.")
-
-            # Minimal history for streaming model (user/assistant only)
-            history = [{"role": m.get("role"), "content": m.get("content","")} for m in recent if m.get("role") in ("user","assistant")]
-            if not history or history[-1].get("role") != "user":
-                history.append({"role":"user","content": user_message})
+            history = [{'role': m.get('role'), 'content': m.get('content','')} for m in recent if m.get('role') in ('user','assistant')]
+            if not history or history[-1].get('role') != 'user':
+                history.append({'role':'user','content': user_message})
         except Exception as e:
-            print(f"[stream] Error preparing history: {e}")
-            history = [{"role":"user","content": user_message}]
-            file_summaries = []
-
-        # === Hybrid search augmentation (true, in streaming path) ===
+            print(f"[stream] history prep error: {e}")
+            history, file_summaries = [{'role':'user','content': user_message}], []
+    
+        # Hybrid search (optional)
         augmented = False
         hybrid_citations_list = []
-        search_results = []
-        search_query = user_message
-
-        # Optional conversation summarization for better search intent
-        try:
-            enable_summarize_content_history_for_search = settings.get('enable_summarize_content_history_for_search', False)
-            number_of_historical_messages_to_summarize = settings.get('number_of_historical_messages_to_summarize', 10)
-            if hybrid_search_enabled and enable_summarize_content_history_for_search:
-                limit_n_search = number_of_historical_messages_to_summarize * 2
-                last_messages_desc = list(cosmos_messages_container.query_items(
-                    query=f"SELECT TOP {limit_n_search} * FROM c WHERE c.conversation_id = @conv_id ORDER BY c.timestamp DESC",
-                    parameters=[{"name": "@conv_id", "value": conversation_id}],
-                    partition_key=conversation_id,
-                    enable_cross_partition_query=True
-                ))
-                last_messages_asc = list(reversed(last_messages_desc))
-                if last_messages_asc:
-                    message_texts_search = [f"{msg.get('role','user').upper()}: {msg.get('content','')}" for msg in last_messages_asc]
-                    summary_prompt_search = "Please summarize the key topics or questions from this recent conversation history in 50 words or less:\n\n" + "\n".join(message_texts_search)
-                    try:
-                        resp_sum = gpt_client.chat.completions.create(
-                            model=gpt_model,
-                            messages=[{"role": "system", "content": summary_prompt_search}],
-                            max_tokens=100
-                        )
-                        summary_for_search = resp_sum.choices[0].message.content.strip()
-                        if summary_for_search:
-                            search_query = f"Based on the recent conversation about: '{summary_for_search}', the user is now asking: {user_message}"
-                    except Exception as e:
-                        print(f"[stream] Summarize-for-search error: {e}")
-        except Exception as e:
-            print(f"[stream] Search summarization prework failed: {e}")
-
-        # Execute hybrid search if requested
         system_search_prompt = None
+        search_query = user_message
+    
         try:
             if hybrid_search_enabled:
-                search_args = {
-                    "query": search_query,
-                    "user_id": user_id,
-                    "top_n": 12,
-                    "doc_scope": document_scope,
-                    "active_group_id": active_group_id
+                args = {
+                    'query': search_query,
+                    'user_id': user_id,
+                    'top_n': 12,
+                    'doc_scope': document_scope,
+                    'active_group_id': active_group_id
                 }
                 if selected_document_id:
-                    search_args["document_id"] = selected_document_id
-
-                search_results = hybrid_search(**search_args)
-
-                if search_results:
+                    args['document_id'] = selected_document_id
+                results = hybrid_search(**args) or []
+                if results:
                     augmented = True
                     retrieved_texts = []
-                    combined_documents = []
+                    combined_docs = []
                     classifications_found = set(conversation_item.get('classification', []))
-
-                    for doc in search_results:
-                        chunk_text = doc.get('chunk_text', '')
-                        file_name = doc.get('file_name', 'Unknown')
-                        version = doc.get('version', 'N/A')
-                        chunk_sequence = doc.get('chunk_sequence', 0)
+                    for doc in results:
+                        chunk_text = doc.get('chunk_text','')
+                        file_name = doc.get('file_name','Unknown')
+                        version = doc.get('version','N/A')
+                        chunk_sequence = doc.get('chunk_sequence',0)
                         page_number = doc.get('page_number') or chunk_sequence or 1
-                        citation_id = doc.get('id', str(uuid.uuid4()))
+                        citation_id = doc.get('id') or str(uuid.uuid4())
                         classification = doc.get('document_classification')
-                        chunk_id = doc.get('chunk_id', str(uuid.uuid4()))
+                        chunk_id = doc.get('chunk_id') or str(uuid.uuid4())
                         score = doc.get('score', 0.0)
-                        group_id = doc.get('group_id', None)
-
-                        citation = f"(Source: {file_name}, Page: {page_number}) [#{citation_id}]"
-                        retrieved_texts.append(f"{chunk_text}\n{citation}")
-                        combined_documents.append({
-                            "file_name": file_name, 
-                            "citation_id": citation_id, 
-                            "page_number": page_number,
-                            "version": version, 
-                            "classification": classification, 
-                            "chunk_text": chunk_text,
-                            "chunk_sequence": chunk_sequence,
-                            "chunk_id": chunk_id,
-                            "score": score,
-                            "group_id": group_id,
+                        group_id = doc.get('group_id')
+                        retrieved_texts.append(f"{chunk_text}\n(Source: {file_name}, Page: {page_number}) [#{citation_id}]")
+                        combined_docs.append({
+                            'file_name': file_name,
+                            'citation_id': citation_id,
+                            'page_number': page_number,
+                            'version': version,
+                            'classification': classification,
+                            'chunk_text': chunk_text,
+                            'chunk_sequence': chunk_sequence,
+                            'chunk_id': chunk_id,
+                            'score': score,
+                            'group_id': group_id
                         })
                         if classification:
                             classifications_found.add(classification)
-
+    
                     retrieved_content = "\n\n".join(retrieved_texts)
                     system_search_prompt = (
                         "You are an AI assistant. Use the following retrieved document excerpts to answer the user's question. "
                         "Cite sources using the format (Source: filename, Page: page number).\n\n"
-                        "Retrieved Excerpts:\n"
-                        f"{retrieved_content}\n\n"
-                        "Based *only* on the information provided above, answer the user's query. If the answer isn't in the excerpts, say so.\n\n"
-                        "Example\n"
-                        "User: What is the policy on double dipping?\n"
-                        "Assistant: The policy prohibits entities from using federal funds received through one program to apply for additional funds through another program, "
-                        "commonly known as 'double dipping' (Source: PolicyDocument.pdf, Page: 12)\n"
+                        "Retrieved Excerpts:\n" + retrieved_content + "\n\n"
+                        "Based *only* on the information provided above, answer the user's query. If the answer isn't in the excerpts, say so."
                     )
-
-                    # Track citations
-                    for src in combined_documents:
+    
+                    for src in combined_docs:
                         hybrid_citations_list.append({
-                            "file_name": src.get("file_name"),
-                            "citation_id": src.get("citation_id"),
-                            "page_number": src.get("page_number"),
-                            "chunk_id": src.get("chunk_id"),
-                            "chunk_sequence": src.get("chunk_sequence"),
-                            "score": src.get("score"),
-                            "group_id": src.get("group_id"),
-                            "version": src.get("version"),
-                            "classification": src.get("classification")
+                            'file_name': src.get('file_name'),
+                            'citation_id': src.get('citation_id'),
+                            'page_number': src.get('page_number'),
+                            'chunk_id': src.get('chunk_id'),
+                            'chunk_sequence': src.get('chunk_sequence'),
+                            'score': src.get('score'),
+                            'group_id': src.get('group_id'),
+                            'version': src.get('version'),
+                            'classification': src.get('classification')
                         })
-
-                    # Sort citations by page desc
-                    hybrid_citations_list.sort(key=lambda x: x.get('page_number', 0), reverse=True)
-
-                    # Persist any new classifications on the conversation
+                    hybrid_citations_list.sort(key=lambda x: x.get('page_number',0), reverse=True)
+    
                     if list(classifications_found) != conversation_item.get('classification', []):
                         conversation_item['classification'] = list(classifications_found)
                         cosmos_conversations_container.upsert_item(conversation_item)
-
         except Exception as e:
-            # If embedding fails, return an explicit 500 like non-stream path
-            if "embedding" in str(e).lower():
-                return jsonify({'error': 'There was an issue with the embedding process. Please check with an admin on embedding configuration.'}), 500
-            print(f"[stream] Hybrid search error: {e}")
-
-        # Build final messages for streaming call
+            print(f"[stream] hybrid search error: {e}")
+    
+        # Tabular enrichment (optional)
+        tabular_system_content = None
+        try:
+            # Use new intent detection for tabular enrichment in stream
+            if should_run_tabular(user_message) or is_numeric_intent(user_message):
+                tabular = tabular_plan_and_execute(
+                    settings=settings,
+                    user_id=user_id,
+                    prompt=user_message,
+                    selected_document_id=selected_document_id,
+                    active_group_id=active_group_id,
+                    timebox_sec=int(settings.get('tabular_timebox_sec', 8))
+                )
+                if isinstance(tabular, dict):
+                    tabular_system_content = tabular.get('system_message') or tabular.get('content')
+                elif isinstance(tabular, str):
+                    tabular_system_content = tabular
+        except Exception as e:
+            print(f"[tabular stream] enrichment failed: {e}")
+    
+        # Build model messages
+        messages = []
         default_system_prompt = settings.get('default_system_prompt', '').strip()
-        final_messages = []
-
         if default_system_prompt:
-            final_messages.append({"role":"system","content": default_system_prompt})
-
-        # Inject any file summaries (as system)
+            messages.append({'role':'system','content': default_system_prompt})
+        if tabular_system_content:
+            messages.append({'role':'system','content': tabular_system_content})
         for fs in file_summaries:
-            final_messages.append({"role":"system","content": fs})
-
-        # Inject hybrid search prompt (if any)
+            messages.append({'role':'system','content': fs})
         if system_search_prompt:
-            final_messages.append({"role":"system","content": system_search_prompt})
-
-        # Then the chat history (user/assistant)
-        final_messages.extend(history)
-
-        # Streaming state
-        partial_text_holder = {"text": ""}
-        aborted_holder = {"aborted": False}
-
+            messages.append({'role':'system','content': system_search_prompt})
+        messages.extend(history)
+    
+        partial = []
+        aborted = False
+        assistant_message_id = None
+    
         def as_ndjson(obj: dict) -> str:
+            import json as _json
             try:
-                return json.dumps(obj, ensure_ascii=False) + "\n"
+                return _json.dumps(obj, ensure_ascii=False) + "\n"
             except Exception:
-                # Fallback to plain string if serialization fails
-                return json.dumps({"type":"error","message":"serialization error"}) + "\n"
+                return _json.dumps({'type':'error','message':'serialization error'}) + "\n"
 
-        def emit_token(s: str):
-            return as_ndjson({"type":"token", "token": s})
-
-        def emit_done():
-            return as_ndjson({"type":"done"})
+        def emit_token(tok: str) -> str:
+            return as_ndjson({'type':'token','token': tok})
 
         @stream_with_context
         def token_generator():
+            nonlocal aborted, assistant_message_id
+            # start + meta frames
+            yield as_ndjson({'type':'start','ts': int(time.time()*1000)})
+            # meta frame so UI can flip Send->Stop & update title
+            yield as_ndjson({'type':'meta','conversation_id': conversation_id,'conversation_title': conversation_item.get('title')})
             try:
+
+                # Numeric fast-path: compute deterministically and stream result
+                if is_numeric_intent(user_message):
+                    tool = analyze_or_aggregate(
+                        user_message,
+                        {
+                            "user_id": user_id,
+                            "active_group_id": active_group_id,
+                            "selected_document_id": selected_document_id
+                        },
+                        None
+                    )
+                    if not tool or not tool.get("audit") or tool["audit"].get("rows_used", 0) <= 0:
+                        yield as_ndjson({'type':'error','message': 'I need the original structured table (sheet & column) to compute this reliably.'})
+                        yield as_ndjson({'type':'done','augmented': False,'hybrid_citations': [],'web_search_citations': [],'message_id': None})
+                        return
+
+                    text = tool.get("text") or "Computation completed."
+                    for i in range(0, len(text), 60):
+                        yield emit_token(text[i:i+60])
+
+                    details = {
+                        "audit": tool.get("audit", {}),
+                        "structured": tool.get("structured", {}),
+                        "citations": tool.get("citations", [])
+                    }
+                    import json as _json
+                    payload = _json.dumps(details).replace("'", "&apos;")
+                    yield as_ndjson({'type':'token','token': "\\n\\n<calc-details data-json='%s'></calc-details>" % payload})
+
+                    # Persist and finish
+                    try:
+                        final_text = text + "\\n\\n[calculation details attached]"
+                        assistant_message_id = f"{conversation_id}_assistant_{int(time.time())}_{random.randint(1000,9999)}"
+                        cosmos_messages_container.upsert_item({
+                            'id': assistant_message_id,
+                            'conversation_id': conversation_id,
+                            'role': 'assistant',
+                            'content': final_text,
+                            'timestamp': datetime.utcnow().isoformat(),
+                            'augmented': False,
+                            'hybrid_citations': [],
+                            'hybridsearch_query': None,
+                            'web_search_citations': [],
+                            'user_message': user_message,
+                            'model_deployment_name': gpt_model,
+                            'stopped': False
+                        })
+                        conversation_item['last_updated'] = datetime.utcnow().isoformat()
+                        cosmos_conversations_container.upsert_item(conversation_item)
+                    except Exception as persist_err:
+                        print(f"[stream numeric] persist error: {persist_err}")
+                    yield as_ndjson({'type':'done','augmented': False,'hybrid_citations': [],'web_search_citations': [],'message_id': assistant_message_id})
+                    return
                 stream = gpt_client.chat.completions.create(
                     model=gpt_model,
-                    messages=final_messages,
+                    messages=messages,
                     stream=True,
                 )
                 for chunk in stream:
-                    delta = ""
                     try:
-                        delta = chunk.choices[0].delta.content or ""
+                        delta = chunk.choices[0].delta.content or ''
                     except Exception:
-                        delta = ""
+                        delta = ''
                     if delta:
-                        partial_text_holder["text"] += delta
+                        partial.append(delta)
                         yield emit_token(delta)
             except (ClientDisconnected, GeneratorExit, BrokenPipeError, ConnectionResetError):
-                aborted_holder["aborted"] = True
-                return
+                aborted = True
             except Exception as e:
-                err = f"[server error: {str(e)}]"
-                partial_text_holder["text"] += err
-                yield as_ndjson({"type":"error","message": err})
+                yield as_ndjson({'type':'error','message': str(e)})
             finally:
-                # Persist assistant message (partial or full)
                 try:
                     assistant_message_id = f"{conversation_id}_assistant_{int(time.time())}_{random.randint(1000,9999)}"
                     cosmos_messages_container.upsert_item({
                         'id': assistant_message_id,
                         'conversation_id': conversation_id,
                         'role': 'assistant',
-                        'content': partial_text_holder["text"] + (" [stopped]" if aborted_holder["aborted"] else ""),
+                        'content': ''.join(partial) + (' [stopped]' if aborted else ''),
                         'timestamp': datetime.utcnow().isoformat(),
                         'augmented': bool(system_search_prompt),
                         'hybrid_citations': hybrid_citations_list if system_search_prompt else [],
@@ -1101,16 +1099,24 @@ Assistant: The capital of France is Paris (Source: OfficialFrancePage)
                         'web_search_citations': [],
                         'user_message': user_message,
                         'model_deployment_name': gpt_model,
-                        'stopped': aborted_holder["aborted"]
+                        'stopped': aborted
                     })
                     conversation_item['last_updated'] = datetime.utcnow().isoformat()
                     cosmos_conversations_container.upsert_item(conversation_item)
                 except Exception as persist_err:
-                    print(f"[stream] Error persisting streamed message: {persist_err}")
-                # Signal done event last
-                try:
-                    yield emit_done()
-                except Exception:
-                    pass
+                    print(f"[stream] persist error: {persist_err}")
+                yield as_ndjson({
+                    'type': 'done',
+                    'augmented': bool(system_search_prompt),
+                    'hybrid_citations': hybrid_citations_list if system_search_prompt else [],
+                    'web_search_citations': [],
+                    'message_id': assistant_message_id
+                })
 
-        return Response(token_generator(), mimetype='application/x-ndjson')
+        headers = {
+            'Cache-Control': 'no-cache, no-transform',
+            'Content-Type': 'application/x-ndjson',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+        return Response(token_generator(), headers=headers)

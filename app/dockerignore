@@ -1,0 +1,67 @@
+# .dockerignore for app/ context
+
+# VCS / metadata
+.git
+.gitignore
+.gitattributes
+.github/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python caches & envs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Build / dist / caches
+dist/
+build/
+.eggs/
+*.egg-info/
+.cache/
+.mypy_cache/
+.pytype/
+
+# Logs & temp
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+
+# Local data (avoid baking datasets into images)
+*.csv
+*.tsv
+*.parquet
+*.feather
+*.orc
+*.xlsx
+*.xls
+*.xlsb
+*.xlsm
+*.docx
+*.pptx
+*.pdf
+*.mp3
+*.wav
+*.mp4
+*.mov
+*.avi
+
+# Docker variants not needed in context
+Dockerfile.*
+docker-compose*.yml
