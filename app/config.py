@@ -25,6 +25,10 @@ ffmpeg_bin.init()
 import ffmpeg as ffmpeg_py
 import glob
 import jwt
+# >>> COSMOS DIAGNOSTICS: imports
+import socket
+from urllib.parse import urlparse
+# <<< COSMOS DIAGNOSTICS
 
 from flask import (
     Flask, 
@@ -153,101 +157,205 @@ bing_search_endpoint = "https://api.bing.microsoft.com/"
 storage_account_user_documents_container_name = "user-documents"
 storage_account_group_documents_container_name = "group-documents"
 
+# >>> COSMOS DIAGNOSTICS: helpers
+def _normalize_cosmos_endpoint(value: str, gov: bool) -> str:
+    """Ensure scheme + host only; trim spaces/trailing slash."""
+    if not value:
+        return value
+    v = value.strip()
+    if not v.startswith("http"):
+        v = "https://" + v
+    parsed = urlparse(v)
+    host = parsed.hostname or ""
+    # Basic domain sanity for gov
+    if gov and host.endswith(".documents.azure.com"):
+        print("[Cosmos] WARNING: Endpoint domain appears public cloud but AZURE_ENVIRONMENT=usgovernment.")
+    if not parsed.scheme.startswith("http"):
+        v = "https://" + host
+    else:
+        v = f"{parsed.scheme}://{host}"
+    return v
+
+def _dns_self_test(endpoint: str) -> None:
+    """Resolve the endpoint hostname early and log precise diagnostics."""
+    try:
+        parsed = urlparse(endpoint)
+        host = parsed.hostname or endpoint
+        # getaddrinfo forces a DNS query; will throw on failure
+        socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+        print(f"[Cosmos] DNS OK for host: {host}")
+    except Exception as e:
+        print(f"[Cosmos] DNS resolution FAILED for endpoint '{endpoint}'.")
+        print("         Error:", repr(e))
+        print("         Action items:")
+        print("         - If Cosmos uses a Private Endpoint, ensure a Private DNS Zone 'privatelink.documents.azure.us'")
+        print("           is linked to the App Service VNet, with an A record like:")
+        print("           '<account>.privatelink.documents.azure.us -> 10.x.x.x'")
+        print("         - Ensure App Service has Regional VNet Integration into the VNet with that Private DNS Zone.")
+        print("         - If using custom DNS, forward 'documents.azure.us' and 'privatelink.documents.azure.us' to Azure DNS.")
+        print("         - If NOT using PE, set Cosmos firewall to allow the App Service outbound IPs OR temporarily 'All networks' for testing.")
+        # Re-raise so startup fails fast with a useful log
+        raise
+# <<< COSMOS DIAGNOSTICS
+
 # Initialize Azure Cosmos DB client
 cosmos_endpoint = os.getenv("AZURE_COSMOS_ENDPOINT")
 cosmos_key = os.getenv("AZURE_COSMOS_KEY")
 cosmos_authentication_type = os.getenv("AZURE_COSMOS_AUTHENTICATION_TYPE", "key") #key or managed_identity
-if cosmos_authentication_type == "managed_identity":
-    cosmos_client = CosmosClient(cosmos_endpoint, credential=DefaultAzureCredential())
-else:
-    cosmos_client = CosmosClient(cosmos_endpoint, cosmos_key)
+
+# >>> COSMOS DIAGNOSTICS: normalize + DNS check + clearer errors
+try:
+    cosmos_endpoint = _normalize_cosmos_endpoint(cosmos_endpoint, gov=(AZURE_ENVIRONMENT == "usgovernment"))
+    if not cosmos_endpoint:
+        raise RuntimeError("AZURE_COSMOS_ENDPOINT not set.")
+    print(f"[Cosmos] Using endpoint: {cosmos_endpoint}")
+
+    _dns_self_test(cosmos_endpoint)
+
+    if cosmos_authentication_type == "managed_identity":
+        cosmos_client = CosmosClient(cosmos_endpoint, credential=DefaultAzureCredential())
+    else:
+        if not cosmos_key:
+            raise RuntimeError("AZURE_COSMOS_KEY not set and AZURE_COSMOS_AUTHENTICATION_TYPE != managed_identity.")
+        cosmos_client = CosmosClient(cosmos_endpoint, cosmos_key)
+except Exception as cosmos_init_err:
+    # Fail fast with actionable error — preserves your eager initialization stance
+    raise RuntimeError(f"[Cosmos] Client initialization failed: {cosmos_init_err}") from cosmos_init_err
+# <<< COSMOS DIAGNOSTICS
 
 cosmos_database_name = "SimpleChat"
-cosmos_database = cosmos_client.create_database_if_not_exists(cosmos_database_name)
+# >>> COSMOS DIAGNOSTICS: stronger error surfacing on DB/containers
+try:
+    cosmos_database = cosmos_client.create_database_if_not_exists(cosmos_database_name)
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_database_if_not_exists('{cosmos_database_name}') failed: {e}") from e
 
 cosmos_conversations_container_name = "conversations"
-cosmos_conversations_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_conversations_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_conversations_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_conversations_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_conversations_container_name}') failed: {e}") from e
 
 cosmos_messages_container_name = "messages"
-cosmos_messages_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_messages_container_name,
-    partition_key=PartitionKey(path="/conversation_id")
-)
+try:
+    cosmos_messages_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_messages_container_name,
+        partition_key=PartitionKey(path="/conversation_id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_messages_container_name}') failed: {e}") from e
 
 cosmos_user_documents_container_name = "documents"
-cosmos_user_documents_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_user_documents_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_user_documents_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_user_documents_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_user_documents_container_name}') failed: {e}") from e
 
 cosmos_settings_container_name = "settings"
-cosmos_settings_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_settings_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_settings_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_settings_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_settings_container_name}') failed: {e}") from e
 
 cosmos_groups_container_name = "groups"
-cosmos_groups_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_groups_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_groups_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_groups_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_groups_container_name}') failed: {e}") from e
 
 cosmos_group_documents_container_name = "group_documents"
-cosmos_group_documents_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_group_documents_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_group_documents_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_group_documents_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_group_documents_container_name}') failed: {e}") from e
 
 cosmos_user_settings_container_name = "user_settings"
-cosmos_user_settings_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_user_settings_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_user_settings_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_user_settings_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_user_settings_container_name}') failed: {e}") from e
 
 cosmos_safety_container_name = "safety"
-cosmos_safety_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_safety_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_safety_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_safety_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_safety_container_name}') failed: {e}") from e
 
 cosmos_feedback_container_name = "feedback"
-cosmos_feedback_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_feedback_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_feedback_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_feedback_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_feedback_container_name}') failed: {e}") from e
 
 cosmos_archived_conversations_container_name = "archived_conversations"
-cosmos_archived_conversations_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_archived_conversations_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_archived_conversations_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_archived_conversations_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_archived_conversations_container_name}') failed: {e}") from e
 
 cosmos_archived_messages_container_name = "archived_messages"
-cosmos_archived_messages_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_archived_messages_container_name,
-    partition_key=PartitionKey(path="/conversation_id")
-)
+try:
+    cosmos_archived_messages_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_archived_messages_container_name,
+        partition_key=PartitionKey(path="/conversation_id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_archived_messages_container_name}') failed: {e}") from e
 
 cosmos_user_prompts_container_name = "prompts"
-cosmos_user_prompts_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_user_prompts_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_user_prompts_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_user_prompts_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_user_prompts_container_name}') failed: {e}") from e
 
 cosmos_group_prompts_container_name = "group_prompts"
-cosmos_group_prompts_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_group_prompts_container_name,
-    partition_key=PartitionKey(path="/id")
-)
+try:
+    cosmos_group_prompts_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_group_prompts_container_name,
+        partition_key=PartitionKey(path="/id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_group_prompts_container_name}') failed: {e}") from e
 
 cosmos_file_processing_container_name = "file_processing"
-cosmos_file_processing_container = cosmos_database.create_container_if_not_exists(
-    id=cosmos_file_processing_container_name,
-    partition_key=PartitionKey(path="/document_id")
-)
+try:
+    cosmos_file_processing_container = cosmos_database.create_container_if_not_exists(
+        id=cosmos_file_processing_container_name,
+        partition_key=PartitionKey(path="/document_id")
+    )
+except Exception as e:
+    raise RuntimeError(f"[Cosmos] create_container_if_not_exists('{cosmos_file_processing_container_name}') failed: {e}") from e
+# <<< COSMOS DIAGNOSTICS
 
 def ensure_custom_logo_file_exists(app, settings):
     """

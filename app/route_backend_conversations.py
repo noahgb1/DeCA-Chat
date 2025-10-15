@@ -249,3 +249,32 @@ def register_route_backend_conversations(app):
             "deleted_count": success_count,
             "failed_ids": failed_ids
         }), 200
+
+    @app.route('/conversation/<conversation_id>/messages', methods=['GET'])
+    @login_required
+    @user_required
+    def get_messages_compat(conversation_id):
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        try:
+            # ensure conversation exists (and implicitly auth via partition key)
+            cosmos_conversations_container.read_item(
+                item=conversation_id,
+                partition_key=conversation_id
+            )
+
+            message_query = (
+                f"SELECT * FROM c WHERE c.conversation_id = '{conversation_id}' "
+                f"ORDER BY c.timestamp ASC"
+            )
+            messages = list(cosmos_messages_container.query_items(
+                query=message_query,
+                partition_key=conversation_id
+            ))
+            return jsonify({'messages': messages}), 200
+        except CosmosResourceNotFoundError:
+            return jsonify({'messages': []}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+

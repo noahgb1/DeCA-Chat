@@ -1,4 +1,3 @@
-
 # functions_tabular.py
 # ---- Mixed tabular analytics over Excel-like docs (prompt-driven, timeboxed) ----
 # Uses parquet manifests produced at ingest time. Prefers DuckDB for big files; falls back to pandas.
@@ -325,14 +324,17 @@ def _duckdb_basic_aggregates(duckdb, parquet_path: str, compute_trend: bool, max
     return out
 
 # ---------- NEW: deterministic aggregate entry point ----------
-# ####noah changed this####
+# (expanded with value listing, unique listing, and distinct counts; fixed lazy import unpack)
 _OPS = {
     "mean": ["mean", "average", "avg"],
     "sum": ["sum", "total"],
     "count_rows": ["count rows", "how many rows", "row count", "rows total", "count of rows"],
     "min": ["min", "minimum", "smallest", "lowest"],
     "max": ["max", "maximum", "largest", "highest"],
-    "median": ["median"]
+    "median": ["median"],
+    "list_values": ["list values", "values", "show values"],
+    "unique_values": ["unique values", "distinct values", "unique", "distinct"],
+    "count_distinct": ["count distinct", "distinct count", "unique count"]
 }
 
 def _normalize(s: str) -> str:
@@ -400,13 +402,45 @@ def _checksum(parts: List[str]) -> str:
 def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict]] = None) -> Dict[str, Any]:
     """
     Deterministic aggregate path used by /chat/stream.
+    Supports:
+      - Basic ops: mean/average, sum, min, max, median, count rows
+      - Grouping: "group by <col>" or "by <col>"
+      - Sheet hint: sheet=<name> (exact or fuzzy)
+      - Listing ops: list values, unique values, count distinct
+      - Ordering flags: "ascending"/"descending"/"sorted", or "order by <col> asc|desc"
     Returns: {"text": str, "audit": {...}, "structured": {...}, "citations": []}
     """
+    import statistics as stats
     start = time.time()
-    pd, np, duckdb = _lazy_imports()
+    pd, _, duckdb = _lazy_imports()  # FIX: unpack correctly (pd, np, duckdb)
     budget = _scaled_time_budget(prompt or "")
     user_id = req_json.get("user_id") or req_json.get("user") or None
     active_group_id = req_json.get("active_group_id") or req_json.get("group_id") or None
+
+    # Parse sheet=<name> and group by hints
+    sheet_hint = None
+    m_sheet = re.search(r"sheet\s*=\s*([\"']?)([^\"'\n\r]+)\1", prompt, flags=re.I)
+    if m_sheet:
+        sheet_hint = m_sheet.group(2).strip()
+
+    group_col_hint = None
+    m_grp = re.search(r"\bgroup\s+by\s+([A-Za-z0-9 _\-./]+)", prompt, flags=re.I)
+    if not m_grp:
+        m_grp = re.search(r"\bby\s+([A-Za-z0-9 _\-./]+)", prompt, flags=re.I)
+    if m_grp:
+        group_col_hint = m_grp.group(1).strip()
+
+    # Ordering hints
+    order_hint = None
+    m_ord = re.search(r"\b(order(?:ed)?|sort(?:ed)?)\s+by\s+([A-Za-z0-9 _\-./]+)\s*(asc|desc)?", prompt, flags=re.I)
+    if m_ord:
+        order_hint = (m_ord.group(2).strip(), (m_ord.group(3) or "").lower() or "asc")
+    # fallback: "ascending/descending/sorted" referencing the measure column
+    order_dir = None
+    if re.search(r"\bdesc(end(?:ing)?)?\b", prompt, flags=re.I):
+        order_dir = "desc"
+    elif re.search(r"\basc(end(?:ing)?)?\b", prompt, flags=re.I) or re.search(r"\bsort(?:ed)?\b", prompt, flags=re.I):
+        order_dir = "asc"
 
     # Fetch manifest
     found = _find_manifest_blob(user_id, active_group_id)
@@ -426,16 +460,21 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
     if not sheets:
         return {}
 
-    # Column discovery (first sheet to get names; we will aggregate across all matching sheets)
+    # Filter sheets by sheet_hint (fuzzy)
+    if sheet_hint:
+        target = _normalize(sheet_hint)
+        filtered = [s for s in sheets if _normalize(s.get("sheet_name","")) == target or target in _normalize(s.get("sheet_name",""))]
+        if filtered:
+            sheets = filtered
+
+    # Column discovery from first matching sheet
     columns = []
-    sample_paths = []
     for s in sheets:
         if (time.time() - start) * 1000.0 > budget:
             break
         local_parquet = _download_blob_to_temp(container_for_data, s["parquet_blob_path"])
         if not local_parquet or not os.path.exists(local_parquet):
             continue
-        sample_paths.append(local_parquet)
         try:
             if duckdb is not None:
                 import duckdb as _ddb
@@ -443,8 +482,7 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
                 rel = con.sql(f"SELECT * FROM read_parquet('{local_parquet}') LIMIT 0")
                 columns = [str(c) for c in rel.columns]
                 con.close()
-                if columns:
-                    break
+                if columns: break
         except Exception:
             pass
         try:
@@ -455,24 +493,46 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
         except Exception:
             continue
 
-    op, col = _detect_op_and_column(prompt or "", columns)
+    # Detect operation and measure column
+    op, measure_col = _detect_op_and_column(prompt or "", columns)
 
     # If the user asked for a column-based op but we couldn't match, fail closed
-    if op not in ("count_rows", None) and not col:
+    if op not in ("count_rows", "list_values", "unique_values", "count_distinct", None) and not measure_col:
         return {
             "text": ("I need the exact column name to compute this (e.g., 'average Distance'). "
-                     "Please restate with the column, or specify the sheet and column."),
+                     "You can also specify a sheet like: sheet=Sheet1."),
             "audit": {"rows_used": 0, "columns_used": [], "operation": None, "checksum": None},
             "structured": {},
             "citations": []
         }
 
-    # Aggregate across all sheets
+    # Resolve group-by column if provided
+    group_col = None
+    if group_col_hint and columns:
+        norm_cols = { _normalize(c): c for c in columns }
+        ng = _normalize(group_col_hint)
+        if ng in norm_cols:
+            group_col = norm_cols[ng]
+        else:
+            for ncol, orig in norm_cols.items():
+                if ng in ncol or ncol in ng:
+                    group_col = orig
+                    break
+
+    # Aggregate across sheets
     total_rows = 0
     operands_used = 0
-    series_pool = []
     sheet_names = []
     parquet_ids = []
+
+    # For ungrouped: collect measure values across all sheets
+    series_pool = []
+
+    # For grouped: map[group_value] -> list of numeric values
+    grouped_values = {}
+
+    # For listing ops: collect values (possibly deduplicate later)
+    listing_values: List[Any] = []
 
     for s in sheets:
         if (time.time() - start) * 1000.0 > budget:
@@ -481,6 +541,7 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
         local_parquet = _download_blob_to_temp(container_for_data, s["parquet_blob_path"])
         if not local_parquet or not os.path.exists(local_parquet):
             continue
+
         parquet_ids.append(s["parquet_blob_path"])
         sheet_names.append(sheet_name)
 
@@ -493,101 +554,260 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
 
         total_rows += int(df.shape[0])
 
+        # Early exit accumulation for count_rows
         if op == "count_rows":
             continue
 
-        # Match column within this sheet too (case-insensitive/fuzzy)
-        if col and col not in df.columns:
-            # attempt fuzzy within this df
-            norm_target = _normalize(col)
+        # For list/unique/count_distinct we only need the raw column values
+        if op in ("list_values", "unique_values", "count_distinct"):
+            # Fuzzy-adjust column per sheet if needed
+            mcol_list = measure_col
+            if (not mcol_list) and columns:
+                # If user didn't specify a column but asked to "list values", prefer the first non-numeric column
+                non_num = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
+                if non_num:
+                    mcol_list = str(non_num[0])
+                    measure_col = measure_col or mcol_list  # reflect auto-select in audit
+            if mcol_list and mcol_list not in df.columns:
+                nt = _normalize(mcol_list)
+                for c in df.columns:
+                    if _normalize(str(c)) == nt or nt in _normalize(str(c)) or _normalize(str(c)) in nt:
+                        mcol_list = str(c)
+                        break
+            if mcol_list and mcol_list in df.columns:
+                colser = df[mcol_list]
+                # If ordering is asked and refers to another column, prepare sortable key
+                if order_hint:
+                    ord_col, ord_dir = order_hint
+                    # try resolve order column fuzzily
+                    ocol = ord_col
+                    if ocol not in df.columns:
+                        no = _normalize(ocol)
+                        for c in df.columns:
+                            if _normalize(str(c)) == no or no in _normalize(str(c)) or _normalize(str(c)) in no:
+                                ocol = str(c)
+                                break
+                    if ocol in df.columns:
+                        tmp = df[[mcol_list, ocol]].copy()
+                        # numeric-friendly sort
+                        tmp["_ord"] = _coerce_numeric_series(pd, tmp[ocol]) if pd.api.types.is_numeric_dtype(tmp[ocol]) else tmp[ocol].astype(str)
+                        tmp = tmp.sort_values("_ord", ascending=(ord_dir != "desc"), kind="mergesort")
+                        listing_values.extend(tmp[mcol_list].astype(str).tolist())
+                    else:
+                        listing_values.extend(colser.astype(str).tolist())
+                elif order_dir and measure_col:
+                    # sort by the measure column itself if user said "ascending/descending"
+                    tmp = df[[mcol_list]].copy()
+                    tmp["_ord"] = _coerce_numeric_series(pd, tmp[mcol_list]) if pd.api.types.is_numeric_dtype(tmp[mcol_list]) else tmp[mcol_list].astype(str)
+                    tmp = tmp.sort_values("_ord", ascending=(order_dir != "desc"), kind="mergesort")
+                    listing_values.extend(tmp[mcol_list].astype(str).tolist())
+                else:
+                    listing_values.extend(colser.astype(str).tolist())
+            continue  # listing ops don't fall through
+
+        # Fuzzy-adjust measure and group columns per sheet if needed
+        mcol = measure_col
+        if mcol and mcol not in df.columns:
+            nt = _normalize(mcol)
             for c in df.columns:
-                if _normalize(str(c)) == norm_target or norm_target in _normalize(str(c)) or _normalize(str(c)) in norm_target:
-                    col = str(c)
+                if _normalize(str(c)) == nt or nt in _normalize(str(c)) or _normalize(str(c)) in nt:
+                    mcol = str(c)
                     break
 
-        if col and col in df.columns:
-            sdata = _coerce_numeric_series(pd, df[col])
-            series_pool.append(sdata.dropna().values.tolist())
-            operands_used += int(sdata.notna().sum())
+        gcol = group_col
+        if group_col and group_col not in df.columns:
+            ng = _normalize(group_col)
+            for c in df.columns:
+                if _normalize(str(c)) == ng or ng in _normalize(str(c)) or _normalize(str(c)) in ng:
+                    gcol = str(c)
+                    break
 
-    # Now compute
+        if mcol and mcol in df.columns:
+            sdata = _coerce_numeric_series(pd, df[mcol]).dropna()
+            operands_used += int(sdata.size)
+            if gcol and gcol in df.columns:
+                keys = df[gcol].astype(str).fillna("")
+                for key, val in zip(keys, sdata):
+                    grouped_values.setdefault(key, []).append(float(val))
+            else:
+                series_pool.append(sdata.values.tolist())
+
+    # Build audit
     audit = {
         "rows_used": int(total_rows),
-        "columns_used": [] if not col else [col],
+        "columns_used": [] if not measure_col else [measure_col] + ([group_col] if group_col else []),
         "sheets_used": sheet_names,
         "parquet_count": len(parquet_ids),
         "operation": op,
         "operands_count": int(operands_used),
-        "filters": None,
-        "checksum": _checksum(parquet_ids + ([col] if col else []))
+        "filters": {"sheet": sheet_hint} if sheet_hint else None,
+        "group_by": group_col,
+        "groups_count": len(grouped_values) if grouped_values else 0,
+        "checksum": _checksum(parquet_ids + ([measure_col] if measure_col else []) + ([group_col] if group_col else []))
     }
 
+    # Handle count_rows
     if op == "count_rows":
-        text = f"Row count across selected sheet(s): **{total_rows}**."
+        text = f"Row count across selected sheet(s){' (filtered by sheet)' if sheet_hint else ''}: **{total_rows}**."
         return {"text": text, "audit": audit, "structured": {"count_rows": total_rows}, "citations": []}
 
-    if not col:
-        # If no op detected but user clearly wants numbers, guide
-        if should_run_tabular(prompt):
+    # Handle listing/unique/distinct-count
+    if op in ("list_values", "unique_values", "count_distinct"):
+        colname = measure_col or "(auto-selected)"
+        if op == "count_distinct":
+            distinct_n = len(set(listing_values))
             return {
-                "text": "Tell me which column to use (e.g., 'average Distance') or say 'count rows'.",
-                "audit": audit, "structured": {}, "citations": []
+                "text": f"Distinct count for **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{distinct_n}**.",
+                "audit": audit, "structured": {"count_distinct": distinct_n, "column": colname}, "citations": []
             }
+        if op == "unique_values":
+            uniq = sorted(set(listing_values))
+            head = uniq[:50]
+            more = len(uniq) - len(head)
+            text_lines = [f"Unique values in **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''} (showing up to 50):"]
+            for v in head:
+                text_lines.append(f"- {v}")
+            if more > 0:
+                text_lines.append(f"- … {more} more")
+            return {"text": "\n".join(text_lines), "audit": audit, "structured": {"unique_values": head, "column": colname}, "citations": []}
+        # list_values (raw, possibly ordered)
+        head = listing_values[:200]
+        more = len(listing_values) - len(head)
+        text_lines = [f"Values from **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''} (first {len(head)}):"]
+        for v in head:
+            text_lines.append(f"- {v}")
+        if more > 0:
+            text_lines.append(f"- … {more} more")
+        return {"text": "\n".join(text_lines), "audit": audit, "structured": {"values_sample": head, "column": colname, "total": len(listing_values)}, "citations": []}
+
+    # If no measure column provided
+    if not measure_col:
+        if should_run_tabular(prompt):
+            guide = "Tell me which column to use (e.g., 'average Distance')."
+            if columns:
+                guide += f" Columns include: {', '.join(columns[:8])}" + ("…" if len(columns) > 8 else "")
+            guide += " You can also add sheet=SheetName and 'group by <column>'."
+            return {"text": guide, "audit": audit, "structured": {}, "citations": []}
         return {}
 
-    # Flatten values
+    # Grouped aggregate
+    if grouped_values:
+        results = []
+        for key, vals in grouped_values.items():
+            if not vals:
+                continue
+            if op in (None, "mean"):
+                agg = float(sum(vals) / len(vals))
+                results.append({"group": key, "n": len(vals), "mean": agg})
+            elif op == "sum":
+                agg = float(sum(vals))
+                results.append({"group": key, "n": len(vals), "sum": agg})
+            elif op == "min":
+                agg = float(min(vals))
+                results.append({"group": key, "n": len(vals), "min": agg})
+            elif op == "max":
+                agg = float(max(vals))
+                results.append({"group": key, "n": len(vals), "max": agg})
+            elif op == "median":
+                agg = float(stats.median(vals))
+                results.append({"group": key, "n": len(vals), "median": agg})
+            else:
+                agg = float(sum(vals) / len(vals))
+                results.append({"group": key, "n": len(vals), "mean": agg})
+
+        # Sort by the chosen metric, descending
+        metric_key = "mean" if op in (None, "mean") else op
+        results.sort(key=lambda r: r.get(metric_key, 0.0), reverse=True)
+
+        op_name = op if op else "mean"
+        head = f"{op_name.capitalize()} of **{measure_col}** by **{group_col}**"
+        if sheet_hint:
+            head += f" on sheet '{sheet_hint}'"
+        lines = [head + ":"]
+        for r in results[:15]:
+            metric = next((k for k in ("mean","sum","min","max","median") if k in r), "mean")
+            lines.append(f"- {r['group']}: {r[metric]:,.2f} (n={r['n']})")
+        if len(results) > 15:
+            lines.append(f"- … {len(results)-15} more groups")
+
+        return {
+            "text": "\n".join(lines),
+            "audit": audit,
+            "structured": {"group_aggregate": results, "measure": measure_col, "group_by": group_col, "operation": op or "mean"},
+            "citations": []
+        }
+
+    # Ungrouped aggregate
     all_vals = []
     for lst in series_pool:
         all_vals.extend(lst)
     if not all_vals:
         return {
-            "text": f"The column '{col}' exists but contains no numeric values I can aggregate.",
+            "text": f"The column '{measure_col}' exists but contains no numeric values I can aggregate.",
             "audit": audit, "structured": {}, "citations": []
         }
 
-    # Compute stats deterministically
-    import statistics as stats
-    result = {}
-    if op in (None, "mean"):  # default to mean if user said "average/mean"
-        mean_val = float(sum(all_vals) / len(all_vals))
-        result["mean"] = mean_val
-        text = f"Average of **{col}** across sheet(s): **{mean_val:,.2f}** (n={len(all_vals)})."
+    if op in (None, "mean"):
+        val = float(sum(all_vals) / len(all_vals))
+        return {
+            "text": f"Average of **{measure_col}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{val:,.2f}** (n={len(all_vals)}).",
+            "audit": audit, "structured": {"mean": val, "n": len(all_vals)}, "citations": []
+        }
     elif op == "sum":
-        ssum = float(sum(all_vals))
-        result["sum"] = ssum
-        text = f"Sum of **{col}** across sheet(s): **{ssum:,.2f}** (n={len(all_vals)})."
+        val = float(sum(all_vals))
+        return {
+            "text": f"Sum of **{measure_col}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{val:,.2f}** (n={len(all_vals)}).",
+            "audit": audit, "structured": {"sum": val, "n": len(all_vals)}, "citations": []
+        }
     elif op == "min":
-        v = float(min(all_vals))
-        result["min"] = v
-        text = f"Minimum of **{col}**: **{v:,.2f}**."
+        val = float(min(all_vals))
+        return {"text": f"Minimum of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"min": val}, "citations": []}
     elif op == "max":
-        v = float(max(all_vals))
-        result["max"] = v
-        text = f"Maximum of **{col}**: **{v:,.2f}**."
+        val = float(max(all_vals))
+        return {"text": f"Maximum of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"max": val}, "citations": []}
     elif op == "median":
-        v = float(stats.median(all_vals))
-        result["median"] = v
-        text = f"Median of **{col}**: **{v:,.2f}**."
+        import statistics as stats  # local import for safety
+        val = float(stats.median(all_vals))
+        return {"text": f"Median of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"median": val}, "citations": []}
     else:
-        # Fallback to mean if operation was unclear but numeric intent was detected
-        mean_val = float(sum(all_vals) / len(all_vals))
-        result["mean"] = mean_val
-        text = f"Average of **{col}** across sheet(s): **{mean_val:,.2f}** (n={len(all_vals)})."
-
-    return {"text": text, "audit": audit, "structured": result, "citations": []}
-# ######
+        val = float(sum(all_vals) / len(all_vals))
+        return {
+            "text": f"Average of **{measure_col}**: **{val:,.2f}** (n={len(all_vals)}).",
+            "audit": audit, "structured": {"mean": val, "n": len(all_vals)}, "citations": []
+        }
 
 # ---------- Main entry ----------
 def tabular_plan_and_execute(
-    user_id: str,
-    question: str,
-    selected_document_id: Optional[str],
-    document_scope: Optional[str],
-    active_group_id: Optional[str],
-    time_budget_ms: Optional[int] = None
+    user_id: Optional[str] = None,
+    question: Optional[str] = None,
+    selected_document_id: Optional[str] = None,
+    document_scope: Optional[str] = None,
+    active_group_id: Optional[str] = None,
+    time_budget_ms: Optional[int] = None,
+    **kwargs
 ) -> Dict[str, Any]:
+    """
+    Backward/forward compatible wrapper used by both non-stream and stream routes.
+
+    Compatible call styles:
+      - tabular_plan_and_execute(user_id, question, selected_document_id, document_scope, active_group_id, time_budget_ms)
+      - tabular_plan_and_execute(settings=..., user_id=..., prompt=..., selected_document_id=..., active_group_id=..., timebox_sec=8)
+    """
+    # Accept alternate param names used by routes
+    prompt = kwargs.get("prompt")
+    if prompt and not question:
+        question = prompt
+    settings = kwargs.get("settings")  # ignored by this function; accepted for compatibility
+    timebox_sec = kwargs.get("timebox_sec")
+    if timebox_sec is not None and time_budget_ms is None:
+        try:
+            time_budget_ms = int(timebox_sec) * 1000
+        except Exception:
+            pass
+
     if not should_run_tabular(question):
         return {}
+
     start = time.time()
     budget = time_budget_ms if time_budget_ms is not None else _scaled_time_budget(question or "")
     compute_trend = wants_trend(question)

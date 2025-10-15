@@ -782,15 +782,17 @@ async function actuallySendMessageStream(finalMessageToSend) {
                 evt.classification || []
               );
             }
-            // ❌ Avoid selectConversation(currentConversationId) here;
+            // Avoid selectConversation(currentConversationId) here;
             // it would call loadMessages() and wipe the streaming bubble.
           }
         } else if (evt.type === "token") {
           if (evt.token) {
-            streamedText += evt.token;
+            // ====== NEW: Strip calc-details tag from token before appending ======
+            const [cleanToken, hadCalc] = stripCalcDetailsToken(evt.token);
+            streamedText += cleanToken;
             // Append as plain text while streaming for performance
             if (textContainer) {
-              textContainer.insertAdjacentText("beforeend", evt.token);
+              textContainer.insertAdjacentText("beforeend", cleanToken);
               try {
                 safeScrollToBottom();
               } catch {}
@@ -798,12 +800,19 @@ async function actuallySendMessageStream(finalMessageToSend) {
             if (hiddenTextarea) {
               hiddenTextarea.value = streamedText;
             }
+            // Optionally: handle calc-details inline (if needed per token)
           }
         } else if (evt.type === "image") {
           // Optional: ignore for now
         } else if (evt.type === "error") {
           appendMessage("Error", evt.message || "Streaming failed.");
         } else if (evt.type === "done") {
+          // --- collect ids first (so we can safely use them below) ---
+          const messageId = evt.message_id || aiNode?.getAttribute("data-message-id") || `msg-${Date.now()}`;
+          if (aiNode && !aiNode.getAttribute("data-message-id")) {
+            aiNode.setAttribute("data-message-id", messageId);
+          }
+
           // Finalize: render Markdown and insert citations (if any)
           const cleaned = (streamedText || "")
             .trim()
@@ -814,17 +823,19 @@ async function actuallySendMessageStream(finalMessageToSend) {
           if (textContainer) {
             textContainer.innerHTML = finalHtml; // Replace plain text with formatted HTML
             attachCodeBlockCopyButtons(textContainer);
-          }
-          if (hiddenTextarea) {
-            hiddenTextarea.value = withInlineCitations; // Keep markdown-copy in sync
+
+            // ====== NEW: Render calc-details panel if present and not already rendered ======
+            const guardId = messageId;
+            if (!detailsRenderedForMsgIds.has(guardId) && streamedText.includes("<calc-details")) {
+              renderCalcDetailsFromTokenText(streamedText, bubble);
+              detailsRenderedForMsgIds.add(guardId);
+            }
           }
 
           // Inject citations toggle if augmentation present
           const augmented = !!evt.augmented;
           const hybridCitations = evt.hybrid_citations || [];
           const webCitations = evt.web_search_citations || [];
-          const messageId =
-            evt.message_id || aiNode?.getAttribute("data-message-id");
 
           if (
             augmented &&
@@ -927,6 +938,91 @@ async function actuallySendMessageStream(finalMessageToSend) {
     } catch {}
   }
 }
+
+// Helper to append text to assistant message element
+function appendToAssistantMessage(msgEl, text) {
+  if (!msgEl) return;
+  let textContainer = msgEl.querySelector(".message-text");
+  if (!textContainer) {
+    textContainer = document.createElement("div");
+    textContainer.className = "message-text";
+    msgEl.appendChild(textContainer);
+  }
+  textContainer.insertAdjacentText("beforeend", text);
+}
+
+// ===== Calc Details (inline helper) =====
+
+// Returns [cleanText, hadCalcPayload]
+// Use this BEFORE adding token text to the DOM so the raw tag never shows.
+function stripCalcDetailsToken(rawTokenText) {
+  if (!rawTokenText) return [rawTokenText, false];
+  const m = rawTokenText.match(/<calc-details\s+data-json='([^']+)'>/);
+  if (!m) return [rawTokenText, false];
+  const cleaned = rawTokenText.replace(m[0], "");
+  return [cleaned, true];
+}
+
+// Renders the collapsible panel once per assistant message.
+// Call this AFTER the message element exists in the DOM.
+function renderCalcDetailsFromTokenText(tokenText, mountEl) {
+  if (!tokenText || !mountEl) return false;
+  const m = tokenText.match(/<calc-details\s+data-json='([^']+)'>/);
+  if (!m) return false;
+
+  // Parse JSON payload stored in the data attribute
+  let payload;
+  try {
+    const jsonStr = m[1].replace(/&apos;/g, "'"); // backend encodes ' as &apos;
+    payload = JSON.parse(jsonStr);
+  } catch (e) {
+    console.warn("[calc-details] Failed to parse payload:", e);
+    return false;
+  }
+
+  // <details> container
+  const details = document.createElement("details");
+  details.className = "calc-details mt-2";
+  details.open = false;
+  const summary = document.createElement("summary");
+  summary.textContent = "Calculation details";
+  details.appendChild(summary);
+
+  const structured = payload.structured || {};
+  // Optional: pretty table for grouped results
+  if (Array.isArray(structured.group_aggregate) && structured.group_aggregate.length) {
+    const metric = ["mean", "sum", "min", "max", "median"].find(k => k in structured.group_aggregate[0]) || "mean";
+    const table = document.createElement("table");
+    table.className = "table table-sm table-striped mt-2";
+    table.innerHTML = "<thead><tr><th>Group</th><th>n</th><th>Value</th></tr></thead><tbody></tbody>";
+    const tbody = table.querySelector("tbody");
+    structured.group_aggregate.slice(0, 50).forEach(row => {
+      const tr = document.createElement("tr");
+      const tdG = document.createElement("td"); tdG.textContent = row.group;
+      const tdN = document.createElement("td"); tdN.textContent = (row.n ?? "").toString();
+      const tdV = document.createElement("td");
+      const v = row[metric];
+      tdV.textContent = (typeof v === "number") ? v.toLocaleString() : (v ?? "").toString();
+      tr.appendChild(tdG); tr.appendChild(tdN); tr.appendChild(tdV);
+      tbody.appendChild(tr);
+    });
+    details.appendChild(table);
+  }
+
+  // Raw JSON fallback (audit + structured)
+  const pre = document.createElement("pre");
+  pre.style.whiteSpace = "pre-wrap";
+  pre.style.fontSize = "0.85rem";
+  pre.textContent = JSON.stringify(payload, null, 2);
+  details.appendChild(pre);
+
+  // Append under the assistant message
+  mountEl.appendChild(details);
+  return true;
+}
+
+// Keep track so we don’t render the panel twice if multiple tokens contain the tag
+const detailsRenderedForMsgIds = new Set();
 
 function attachCodeBlockCopyButtons(parentElement) {
   if (!parentElement) return;
@@ -1061,7 +1157,7 @@ if (modelSelect) {
 
   function shouldQuery(prefix) {
     if (!prefix || prefix.length < 3) return false;
-    if (!/\\w$/.test(prefix)) return false;
+    if (!/\w$/.test(prefix)) return false;
     if (prefix === lastPrefixSent) return false;
     return true;
   }

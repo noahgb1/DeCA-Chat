@@ -1062,3 +1062,16 @@ ol {
 [data-bs-theme="dark"] #ghost-overlay .suggestion {
   color: #a8b0b8;
 }
+
+/* Calculation details panel styles */
+.calc-details {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: .5rem;
+  padding: .5rem .75rem;
+  background: var(--bs-body-bg, #fff);
+  margin-top: .25rem;
+}
+.calc-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
