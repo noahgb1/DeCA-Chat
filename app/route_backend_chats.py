@@ -27,6 +27,38 @@ def is_numeric_intent(prompt: str) -> bool:
     ]
     return any(t in p for t in triggers)
 
+# NEW: broader tabular intent helper (reuses should_run_tabular + additional phrases)
+def _looks_tabular_intent(text: str) -> bool:
+    t = (text or "").lower()
+    extra = (
+        "exact column", "dump column", "full column", "column contents", "list entire column",
+        "list values", "unique values", "distinct values", "count distinct",
+        "sum", "total", "average", "avg", "mean", "median", "min", "max",
+        "count rows", "row count", "how many rows"
+    )
+    if any(k in t for k in extra):
+        return True
+    if should_run_tabular(t):
+        return True
+    return False
+
+# NEW: prompt builder for exact column dump
+def _build_exact_prompt(sheet: str | None, column: str | None,
+                        limit: int, offset: int,
+                        order_by: str | None, order_dir: str | None) -> str:
+    toks = []
+    toks.append("exact column")
+    if column:
+        toks.append(column)
+    if sheet:
+        toks.append(f'sheet="{sheet}"')
+    toks.append(f"limit={int(limit)}")
+    toks.append(f"offset={int(offset)}")
+    if order_by:
+        dir_token = (order_dir or "asc").lower()
+        toks.append(f'order by {order_by} {dir_token}')
+    return " ".join(toks)
+
 def register_route_backend_chats(app):
     @app.route('/api/chat', methods=['POST'])
     @login_required
@@ -1199,3 +1231,96 @@ Assistant: The capital of France is Paris (Source: OfficialFrancePage)
             'Connection': 'keep-alive',
         }
         return Response(token_generator(), headers=headers)
+
+    # =========================
+    # NEW: Deterministic routes
+    # =========================
+
+    @app.route('/api/tabular/column', methods=['POST'])
+    @login_required
+    @user_required
+    def api_tabular_column():
+        """
+        Deterministic, exact in-order column dump with pagination.
+        Returns the raw JSON from functions_tabular.analyze_or_aggregate (structured + audit).
+        Body params:
+          - selected_document_id, active_group_id
+          - sheet (optional, fuzzy ok), column (optional, fuzzy ok)
+          - limit (default 200), offset (default 0)
+          - order_by (optional), order_dir (asc|desc)
+        """
+        data = request.get_json() or {}
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+
+        selected_document_id = data.get('selected_document_id')
+        active_group_id = data.get('active_group_id')
+        sheet = data.get('sheet')
+        column = data.get('column')
+        limit = max(1, min(int(data.get('limit', 200)), 5000))
+        offset = max(0, int(data.get('offset', 0)))
+        order_by = data.get('order_by')
+        order_dir = (data.get('order_dir') or '').lower() or None
+        if order_dir and order_dir not in ('asc', 'desc'):
+            order_dir = 'asc'
+
+        prompt = _build_exact_prompt(sheet, column, limit, offset, order_by, order_dir)
+        req_json = {
+            "user_id": user_id,
+            "active_group_id": active_group_id,
+            "selected_document_id": selected_document_id
+        }
+        try:
+            res = analyze_or_aggregate(prompt, req_json)
+        except Exception as e:
+            current_app.logger.exception("/api/tabular/column failed")
+            return jsonify({'error': 'Tabular analysis failed.'}), 500
+
+        if not res:
+            return jsonify({'error': 'No manifest/sheets found or column not available.'}), 404
+        return jsonify(res), 200
+
+    @app.route('/api/chat/route', methods=['POST'])
+    @login_required
+    @user_required
+    def api_chat_route():
+        """
+        Optional pre-router to force deterministic tabular tool usage for tabular asks.
+        If routed, returns deterministic JSON from analyze_or_aggregate; otherwise signals caller to continue normal chat.
+        Body params:
+          - message (required)
+          - selected_document_id, active_group_id
+        """
+        data = request.get_json() or {}
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+
+        message = data.get('message') or ''
+        if not message.strip():
+            return jsonify({'error': 'Empty message.'}), 400
+
+        if not _looks_tabular_intent(message):
+            return jsonify({'routed': False, 'route': 'none'}), 200
+
+        req_json = {
+            "user_id": user_id,
+            "active_group_id": data.get('active_group_id'),
+            "selected_document_id": data.get('selected_document_id')
+        }
+        try:
+            res = analyze_or_aggregate(message, req_json)
+        except Exception as e:
+            current_app.logger.exception("/api/chat/route analyze_or_aggregate failed")
+            res = None
+
+        if not res:
+            res = {
+                "text": "I couldn't find a valid tabular manifest or sheets for this document. "
+                        "Provide a sheet hint (e.g., sheet=Sheet1) or ensure ingestion completed.",
+                "audit": {},
+                "structured": {},
+                "citations": []
+            }
+        return jsonify({'routed': True, 'route': 'tabular', 'result': res}), 200

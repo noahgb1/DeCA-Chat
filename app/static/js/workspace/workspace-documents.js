@@ -235,8 +235,12 @@ if (uploadBtn && fileInput && uploadStatusSpan) {
         }
 
         filesToUpload.forEach(file => {
+            // Append each under the same 'file' key to match backend expectation
             formData.append("file", file, file.name);
         });
+
+        // Extra diagnostics to help with ambiguous 400s
+        console.debug("[Upload] Appending %d files. Keys now:", filesToUpload.length, Array.from(formData.keys()));
 
         uploadStatusSpan.textContent = `Uploading ${filesToUpload.length} file(s)...`;
         uploadBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Uploading...`;
@@ -245,10 +249,23 @@ if (uploadBtn && fileInput && uploadStatusSpan) {
             const response = await fetch("/api/documents/upload", {
                 method: "POST",
                 body: formData,
+                credentials: "same-origin"
             });
-            const data = await response.json();
+
+            // Try to parse JSON (even on error), but fall back to text if needed
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                const text = await response.text();
+                data = { error: text || null };
+            }
+
             if (!response.ok) {
-                 throw new Error(data.error || `Server responded with status ${response.status}`);
+                // Surface detailed server-side reasons if provided
+                const serverListErrors = Array.isArray(data.errors) && data.errors.length ? ` Details: ${data.errors.join('; ')}` : '';
+                const serverMessage = data.error || data.message || '';
+                throw new Error(`${serverMessage || `Server responded with status ${response.status}`}${serverListErrors}`);
             }
 
             const docIds = data.document_ids || (data.document_id ? [data.document_id] : []);
@@ -730,7 +747,7 @@ function pollDocumentStatus(documentId) {
 
 // --- show the upgrade alert into your placeholder ---
 function showLegacyUpdatePrompt() {
-    // don’t re‑show if it’s already there
+    // don’t re-show if it’s already there
     if (document.getElementById('legacy-update-alert')) return;
   
     const placeholder = document.getElementById('legacy-update-prompt-placeholder');

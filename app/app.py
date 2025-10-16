@@ -18,7 +18,7 @@ from route_frontend_groups import *
 from route_frontend_group_workspaces import *
 from route_frontend_safety import *
 from route_frontend_feedback import *
-
+from route_backend_analytics import register_route_backend_analytics
 from route_backend_chats import *
 from route_backend_conversations import *
 from route_backend_documents import *
@@ -219,9 +219,11 @@ register_route_backend_prompts(app)
 # ------------------- API Group Prompts Routes ----------
 register_route_backend_group_prompts(app)
 
-# >>> ADDED: register the prediction blueprint
+# register the prediction blueprint
 app.register_blueprint(bp_predict)
-# <<< ADDED
+
+#register analytics routes
+register_route_backend_analytics(app)
 
 # ------------------- Extenral Health Routes ----------
 register_route_external_health(app)

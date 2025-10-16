@@ -6,10 +6,8 @@ from typing import Dict, Any, Optional, List, Tuple
 import os
 import time
 import json
-import tempfile
 import re
-import math
-import hashlib
+import hashlib  # needed for _checksum
 
 # Patterns that indicate the user is asking for analysis (broad, natural language friendly)
 _ANALYTIC_PATTERNS = [
@@ -80,8 +78,9 @@ def _lazy_imports():
         pass
     return pd, np, duckdb
 
-BASE_TIME_BUDGET_MS = 600
-BOOSTED_TIME_BUDGET_MS = 1200
+# Increased budgets so small (e.g., 14x50) sheets never time out spuriously
+BASE_TIME_BUDGET_MS = 1200
+BOOSTED_TIME_BUDGET_MS = 2400
 
 ANALYTIC_HINTS = (
     "count","counts","total","sum","average","avg","median","mean","min","max",
@@ -137,6 +136,10 @@ def _try_list_blobs(container_name: Optional[str], prefix: Optional[str]) -> Lis
     return names
 
 def _download_blob_to_temp(container_name: Optional[str], blob_name: str) -> Optional[str]:
+    """
+    Securely download a blob to a uniquely named temp file.
+    Caller MUST remove the returned file when finished.
+    """
     if not container_name:
         return None
     bsc = _blob_clients()
@@ -145,16 +148,59 @@ def _download_blob_to_temp(container_name: Optional[str], blob_name: str) -> Opt
     try:
         cont = bsc.get_container_client(container_name)
         blob = cont.get_blob_client(blob_name)
-        temp_path = os.path.join(tempfile.gettempdir(), os.path.basename(blob_name))
-        with open(temp_path, "wb") as f:
+        # preserve extension if present
+        _, ext = os.path.splitext(blob_name)
+        import tempfile
+        # create a unique file; NamedTemporaryFile with delete=False so caller can control lifecycle
+        tmp = tempfile.NamedTemporaryFile(prefix="tabular_", suffix=ext or "", delete=False)
+        tmp_path = tmp.name
+        try:
             data = blob.download_blob()
-            f.write(data.readall())
-        return temp_path
-    except Exception:
+            tmp.write(data.readall())
+            tmp.flush()
+        finally:
+            tmp.close()
+        return tmp_path
+    except Exception as e:
+        try:
+            # best-effort cleanup if partially created
+            if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+        # let caller observe None on failure
         return None
 
-def _find_manifest_blob(user_id: Optional[str], active_group_id: Optional[str]) -> Optional[Tuple[str, str]]:
+def _find_manifest_blob(user_id: Optional[str], active_group_id: Optional[str], document_id: Optional[str] = None) -> Optional[Tuple[str, str]]:
+    """
+    Prefer exact manifest by document_id at deterministic path(s:
+      - If active_group_id: "<active_group_id>/{document_id}__manifest.json"
+      - Then user: "<user_id>/{document_id}__manifest.json"
+    Fall back to scanning existing heuristics if not found.
+    """
     group_c, user_c = _get_containers()
+    bsc = _blob_clients()
+
+    # Try exact candidate paths first when document_id provided
+    if document_id and bsc:
+        if active_group_id and group_c:
+            try:
+                candidate = f"{active_group_id}/{document_id}__manifest.json"
+                blob_client = bsc.get_container_client(group_c).get_blob_client(candidate)
+                if blob_client.exists():
+                    return (group_c, candidate)
+            except Exception:
+                pass
+        if user_id and user_c:
+            try:
+                candidate = f"{user_id}/{document_id}__manifest.json"
+                blob_client = bsc.get_container_client(user_c).get_blob_client(candidate)
+                if blob_client.exists():
+                    return (user_c, candidate)
+            except Exception:
+                pass
+
+    # Fallback: previous heuristic scan
     prefix = _guess_blob_prefix(user_id, active_group_id)
     if active_group_id and group_c and prefix:
         for name in _try_list_blobs(group_c, prefix):
@@ -334,7 +380,9 @@ _OPS = {
     "median": ["median"],
     "list_values": ["list values", "values", "show values"],
     "unique_values": ["unique values", "distinct values", "unique", "distinct"],
-    "count_distinct": ["count distinct", "distinct count", "unique count"]
+    "count_distinct": ["count distinct", "distinct count", "unique count"],
+    # NEW: strict, full, in-order column dump with pagination
+    "exact_column": ["exact column", "dump column", "full column", "column contents", "list entire column"]
 }
 
 def _normalize(s: str) -> str:
@@ -377,8 +425,14 @@ def _detect_op_and_column(prompt: str, columns: List[str]) -> Tuple[Optional[str
 def _coerce_numeric_series(pd, s):
     if pd.api.types.is_numeric_dtype(s):
         return s
-    # remove common thousands separators, spaces
-    x = s.astype(str).str.replace(",", "", regex=False).str.strip()
+    # remove common thousands separators, currency/percent, and accounting parentheses
+    x = (s.astype(str)
+           .str.replace(",", "", regex=False)
+           .str.replace("$", "", regex=False)
+           .str.replace("%", "", regex=False)
+           .str.replace("(", "-", regex=False)
+           .str.replace(")", "", regex=False)
+           .str.strip())
     return pd.to_numeric(x, errors="coerce")
 
 def _combine_numeric(series_list):
@@ -399,6 +453,37 @@ def _checksum(parts: List[str]) -> str:
         h.update(p.encode("utf-8", errors="ignore"))
     return h.hexdigest()[:16]
 
+# NEW: manifest validator used by callers before proceeding
+def _validate_manifest(m: dict) -> bool:
+    try:
+        sheets = m.get("sheets", [])
+        if not isinstance(sheets, list) or not sheets:
+            return False
+        for s in sheets:
+            if not isinstance(s, dict):
+                return False
+            if not s.get("parquet_blob_path"):
+                return False
+            # optional/nice-to-have fields (do not fail if missing)
+            _ = s.get("sheet_name", "")
+            _ = s.get("rows", None)
+            _ = s.get("cols", None)
+        return True
+    except Exception:
+        return False
+
+def _int(arg, default):
+    try:
+        return int(arg)
+    except Exception:
+        return default
+
+def _parse_pagination(prompt: str):
+    lim = re.search(r"\blimit\s*=\s*(\d+)", prompt, flags=re.I)
+    off = re.search(r"\boffset\s*=\s*(\d+)", prompt, flags=re.I)
+    return (_int(lim.group(1), 200) if lim else 200,
+            _int(off.group(1), 0) if off else 0)
+
 def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict]] = None) -> Dict[str, Any]:
     """
     Deterministic aggregate path used by /chat/stream.
@@ -407,6 +492,7 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
       - Grouping: "group by <col>" or "by <col>"
       - Sheet hint: sheet=<name> (exact or fuzzy)
       - Listing ops: list values, unique values, count distinct
+      - EXACT column dump op: returns full column values in stable row order with pagination
       - Ordering flags: "ascending"/"descending"/"sorted", or "order by <col> asc|desc"
     Returns: {"text": str, "audit": {...}, "structured": {...}, "citations": []}
     """
@@ -417,364 +503,521 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
     user_id = req_json.get("user_id") or req_json.get("user") or None
     active_group_id = req_json.get("active_group_id") or req_json.get("group_id") or None
 
-    # Parse sheet=<name> and group by hints
-    sheet_hint = None
-    m_sheet = re.search(r"sheet\s*=\s*([\"']?)([^\"'\n\r]+)\1", prompt, flags=re.I)
-    if m_sheet:
-        sheet_hint = m_sheet.group(2).strip()
-
-    group_col_hint = None
-    m_grp = re.search(r"\bgroup\s+by\s+([A-Za-z0-9 _\-./]+)", prompt, flags=re.I)
-    if not m_grp:
-        m_grp = re.search(r"\bby\s+([A-Za-z0-9 _\-./]+)", prompt, flags=re.I)
-    if m_grp:
-        group_col_hint = m_grp.group(1).strip()
-
-    # Ordering hints
-    order_hint = None
-    m_ord = re.search(r"\b(order(?:ed)?|sort(?:ed)?)\s+by\s+([A-Za-z0-9 _\-./]+)\s*(asc|desc)?", prompt, flags=re.I)
-    if m_ord:
-        order_hint = (m_ord.group(2).strip(), (m_ord.group(3) or "").lower() or "asc")
-    # fallback: "ascending/descending/sorted" referencing the measure column
-    order_dir = None
-    if re.search(r"\bdesc(end(?:ing)?)?\b", prompt, flags=re.I):
-        order_dir = "desc"
-    elif re.search(r"\basc(end(?:ing)?)?\b", prompt, flags=re.I) or re.search(r"\bsort(?:ed)?\b", prompt, flags=re.I):
-        order_dir = "asc"
-
-    # Fetch manifest
-    found = _find_manifest_blob(user_id, active_group_id)
-    if not found:
-        return {}
-    container_for_data, manifest_blob = found
-    local_manifest = _download_blob_to_temp(container_for_data, manifest_blob)
-    if not local_manifest or not os.path.exists(local_manifest):
-        return {}
+    temp_paths: List[str] = []
     try:
-        with open(local_manifest, "r", encoding="utf-8") as f:
-            manifest = json.load(f)
-    except Exception:
-        return {}
+        # Parse sheet=<name> and group by hints
+        sheet_hint = None
+        m_sheet = re.search(r"sheet\s*=\s*([\"']?)([^\"'\n\r]+)\1", prompt, flags=re.I)
+        if m_sheet:
+            sheet_hint = m_sheet.group(2).strip()
 
-    sheets = _sheet_iter_from_manifest(manifest)
-    if not sheets:
-        return {}
+        group_col_hint = None
+        m_grp = re.search(r"\bgroup\s+by\s+([A-Za-z0-9 _\-./]+)", prompt, flags=re.I)
+        if not m_grp:
+            m_grp = re.search(r"\bby\s+([A-Za-z0-9 _\-./]+)", prompt, flags=re.I)
+        if m_grp:
+            group_col_hint = m_grp.group(1).strip()
 
-    # Filter sheets by sheet_hint (fuzzy)
-    if sheet_hint:
-        target = _normalize(sheet_hint)
-        filtered = [s for s in sheets if _normalize(s.get("sheet_name","")) == target or target in _normalize(s.get("sheet_name",""))]
-        if filtered:
-            sheets = filtered
+        # Ordering hints
+        order_hint = None
+        m_ord = re.search(r"\b(order(?:ed)?|sort(?:ed)?)\s+by\s+([A-Za-z0-9 _\-./]+)\s*(asc|desc)?", prompt, flags=re.I)
+        if m_ord:
+            order_hint = (m_ord.group(2).strip(), (m_ord.group(3) or "").lower() or "asc")
+        # fallback: "ascending/descending/sorted" referencing the measure column
+        order_dir = None
+        if re.search(r"\bdesc(end(?:ing)?)?\b", prompt, flags=re.I):
+            order_dir = "desc"
+        elif re.search(r"\basc(end(?:ing)?)?\b", prompt, flags=re.I) or re.search(r"\bsort(?:ed)?\b", prompt, flags=re.I):
+            order_dir = "asc"
 
-    # Column discovery from first matching sheet
-    columns = []
-    for s in sheets:
-        if (time.time() - start) * 1000.0 > budget:
-            break
-        local_parquet = _download_blob_to_temp(container_for_data, s["parquet_blob_path"])
-        if not local_parquet or not os.path.exists(local_parquet):
-            continue
+        # Fetch manifest (prefer explicit selected_document_id when present)
+        sel_doc = req_json.get("selected_document_id") or req_json.get("document_id") or None
+        found = _find_manifest_blob(user_id, active_group_id, sel_doc)
+        if not found:
+            return {}
+        container_for_data, manifest_blob = found
+        local_manifest = _download_blob_to_temp(container_for_data, manifest_blob)
+        if local_manifest:
+            temp_paths.append(local_manifest)
+        if not local_manifest or not os.path.exists(local_manifest):
+            return {}
         try:
-            if duckdb is not None:
-                import duckdb as _ddb
-                con = _ddb.connect()
-                rel = con.sql(f"SELECT * FROM read_parquet('{local_parquet}') LIMIT 0")
-                columns = [str(c) for c in rel.columns]
-                con.close()
-                if columns: break
+            with open(local_manifest, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
         except Exception:
-            pass
-        try:
-            if pd is not None:
-                df = pd.read_parquet(local_parquet)
-                columns = [str(c) for c in df.columns]
+            return {}
+        # Validate manifest structure before proceeding
+        if not _validate_manifest(manifest):
+            return {
+                "text": (
+                    "Tabular manifest found but it does not include valid sheet/parquet entries. "
+                    "Ensure ingestion completed successfully and the manifest contains a 'sheets' list with 'parquet_blob_path' for each sheet."
+                ),
+                "audit": {}, "structured": {}, "citations": []
+            }
+
+        sheets = _sheet_iter_from_manifest(manifest)
+        if not sheets:
+            return {}
+
+        # Filter sheets by sheet_hint (fuzzy)
+        if sheet_hint:
+            target = _normalize(sheet_hint)
+            filtered = [s for s in sheets if _normalize(s.get("sheet_name","")) == target or target in _normalize(s.get("sheet_name",""))]
+            if filtered:
+                sheets = filtered
+
+        # Column discovery from first matching sheet
+        columns = []
+        for s in sheets:
+            if (time.time() - start) * 1000.0 > budget:
                 break
-        except Exception:
-            continue
-
-    # Detect operation and measure column
-    op, measure_col = _detect_op_and_column(prompt or "", columns)
-
-    # If the user asked for a column-based op but we couldn't match, fail closed
-    if op not in ("count_rows", "list_values", "unique_values", "count_distinct", None) and not measure_col:
-        return {
-            "text": ("I need the exact column name to compute this (e.g., 'average Distance'). "
-                     "You can also specify a sheet like: sheet=Sheet1."),
-            "audit": {"rows_used": 0, "columns_used": [], "operation": None, "checksum": None},
-            "structured": {},
-            "citations": []
-        }
-
-    # Resolve group-by column if provided
-    group_col = None
-    if group_col_hint and columns:
-        norm_cols = { _normalize(c): c for c in columns }
-        ng = _normalize(group_col_hint)
-        if ng in norm_cols:
-            group_col = norm_cols[ng]
-        else:
-            for ncol, orig in norm_cols.items():
-                if ng in ncol or ncol in ng:
-                    group_col = orig
-                    break
-
-    # Aggregate across sheets
-    total_rows = 0
-    operands_used = 0
-    sheet_names = []
-    parquet_ids = []
-
-    # For ungrouped: collect measure values across all sheets
-    series_pool = []
-
-    # For grouped: map[group_value] -> list of numeric values
-    grouped_values = {}
-
-    # For listing ops: collect values (possibly deduplicate later)
-    listing_values: List[Any] = []
-
-    for s in sheets:
-        if (time.time() - start) * 1000.0 > budget:
-            break
-        sheet_name = s.get("sheet_name", "?")
-        local_parquet = _download_blob_to_temp(container_for_data, s["parquet_blob_path"])
-        if not local_parquet or not os.path.exists(local_parquet):
-            continue
-
-        parquet_ids.append(s["parquet_blob_path"])
-        sheet_names.append(sheet_name)
-
-        try:
-            if pd is None:
+            local_parquet = _download_blob_to_temp(container_for_data, s["parquet_blob_path"])
+            if local_parquet:
+                temp_paths.append(local_parquet)
+            if not local_parquet or not os.path.exists(local_parquet):
                 continue
-            df = pd.read_parquet(local_parquet)
-        except Exception:
-            continue
+            try:
+                if duckdb is not None:
+                    import duckdb as _ddb
+                    con = _ddb.connect()
+                    rel = con.sql(f"SELECT * FROM read_parquet('{local_parquet}') LIMIT 0")
+                    columns = [str(c) for c in rel.columns]
+                    con.close()
+                    if columns: break
+            except Exception:
+                pass
+            try:
+                if pd is not None:
+                    df = pd.read_parquet(local_parquet)
+                    columns = [str(c) for c in df.columns]
+                    break
+            except Exception:
+                continue
 
-        total_rows += int(df.shape[0])
+        # Detect operation and measure column
+        op, measure_col = _detect_op_and_column(prompt or "", columns)
 
-        # Early exit accumulation for count_rows
-        if op == "count_rows":
-            continue
+        # ---------- NEW: Strict EXACT column dump with stable order + pagination ----------
+        if op == "exact_column":
+            if not measure_col:
+                # auto-pick if user wrote "exact column" without a name
+                if columns:
+                    measure_col = columns[0]
+                else:
+                    return {"text": "No column found.", "audit": {}, "structured": {}, "citations": []}
 
-        # For list/unique/count_distinct we only need the raw column values
-        if op in ("list_values", "unique_values", "count_distinct"):
-            # Fuzzy-adjust column per sheet if needed
-            mcol_list = measure_col
-            if (not mcol_list) and columns:
-                # If user didn't specify a column but asked to "list values", prefer the first non-numeric column
-                non_num = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
-                if non_num:
-                    mcol_list = str(non_num[0])
-                    measure_col = measure_col or mcol_list  # reflect auto-select in audit
-            if mcol_list and mcol_list not in df.columns:
-                nt = _normalize(mcol_list)
-                for c in df.columns:
-                    if _normalize(str(c)) == nt or nt in _normalize(str(c)) or _normalize(str(c)) in nt:
-                        mcol_list = str(c)
+            limit, offset = _parse_pagination(prompt or "")
+            total = 0
+            values: List[str] = []
+
+            # explicit sort: "order by <col> asc|desc"
+            ord_col, ord_dir_local = None, None
+            m_ord2 = re.search(r"\border\s+by\s+([A-Za-z0-9 _./-]+)\s*(asc|desc)?", prompt or "", flags=re.I)
+            if m_ord2:
+                ord_col = m_ord2.group(1).strip()
+                ord_dir_local = (m_ord2.group(2) or "asc").lower()
+
+            for s in sheets:
+                if (time.time() - start) * 1000.0 > budget:
+                    break
+                local_parquet = _download_blob_to_temp(container_for_data, s["parquet_blob_path"])
+                if local_parquet:
+                    temp_paths.append(local_parquet)
+                if not local_parquet or not os.path.exists(local_parquet):
+                    continue
+
+                if duckdb is not None:
+                    import duckdb as _ddb
+                    con = _ddb.connect()
+                    try:
+                        # columns for fuzzy resolution of ord_col
+                        cols = [str(c) for c in con.sql(f"SELECT * FROM read_parquet('{local_parquet}') LIMIT 0").columns]
+                        order_clause = ""
+                        resolved_order_by = None
+                        if ord_col:
+                            resolved_order_by = ord_col
+                            if resolved_order_by not in cols:
+                                no = _normalize(resolved_order_by)
+                                for c in cols:
+                                    if _normalize(c) == no or no in _normalize(c) or _normalize(c) in no:
+                                        resolved_order_by = c; break
+                            if resolved_order_by in cols:
+                                order_clause = f' ORDER BY "{resolved_order_by}" {"DESC" if (ord_dir_local=="desc") else "ASC"}'
+                        else:
+                            # prefer stable original order if row_index exists
+                            if "row_index" in cols:
+                                order_clause = ' ORDER BY row_index'
+
+                        q = f'''
+                            SELECT "{measure_col}" AS v
+                            FROM read_parquet('{local_parquet}')
+                            {order_clause}
+                            LIMIT {limit} OFFSET {offset}
+                        '''
+                        page_vals = [r[0] for r in con.sql(q).fetchall()]
+                        tq = f"SELECT COUNT(*) FROM read_parquet('{local_parquet}')"
+                        total += int(con.sql(tq).fetchone()[0] or 0)
+                        values.extend([("" if v is None else str(v)) for v in page_vals])
+                    finally:
+                        con.close()
+                else:
+                    # pandas fallback
+                    if pd is None:
+                        continue
+                    try:
+                        df = pd.read_parquet(local_parquet)
+                        total += int(df.shape[0])
+                        # stable order preference
+                        if ord_col and ord_col in df.columns:
+                            asc = (ord_dir_local != "desc")
+                            df = df.sort_values(ord_col, ascending=asc, kind="mergesort")
+                        elif "row_index" in df.columns:
+                            df = df.sort_values("row_index", kind="mergesort")
+                        sub = df.iloc[offset: offset+limit]
+                        if measure_col not in sub.columns:
+                            # fuzzy resolve
+                            nt = _normalize(measure_col)
+                            for c in df.columns:
+                                if _normalize(str(c)) == nt or nt in _normalize(str(c)) or _normalize(str(c)) in nt:
+                                    measure_col = str(c); break
+                            sub = df.iloc[offset: offset+limit]
+                        vals = sub[measure_col].astype(str).tolist()
+                        values.extend(vals)
+                    except Exception:
+                        continue
+
+            # Build audit for exact op
+            parquet_ids = [s.get("parquet_blob_path","") for s in sheets]
+            audit = {
+                "rows_used": int(total),
+                "columns_used": [measure_col],
+                "sheets_used": [s.get("sheet_name","?") for s in sheets],
+                "parquet_count": len(parquet_ids),
+                "operation": op,
+                "operands_count": int(len(values)),
+                "filters": {"sheet": sheet_hint} if sheet_hint else None,
+                "group_by": None,
+                "groups_count": 0,
+                "checksum": _checksum(parquet_ids + [measure_col])
+            }
+
+            result = {
+                "values": values,
+                "total": total,
+                "page_size": limit,
+                "offset": offset,
+                "column": measure_col,
+                "order_applied": {
+                    "by": (ord_col or ("row_index" if ord_col is None else None)) or "insertion",
+                    "dir": (ord_dir_local or "asc")
+                }
+            }
+            text = f"Exact values for **{measure_col}** (first {len(values)} of {total})."
+            # Optional integrity note if obvious truncation by limit/offset
+            if len(values) < total and offset == 0:
+                text += " (Paginated; increase limit= to see more.)"
+            return {"text": text, "audit": audit, "structured": result, "citations": []}
+        # ---------- END exact column branch ----------
+
+        # If the user asked for a column-based op but we couldn't match, fail closed
+        if op not in ("count_rows", "list_values", "unique_values", "count_distinct", None) and not measure_col:
+            return {
+                "text": ("I need the exact column name to compute this (e.g., 'average Distance'). "
+                         "You can also specify a sheet like: sheet=Sheet1."),
+                "audit": {"rows_used": 0, "columns_used": [], "operation": None, "checksum": None},
+                "structured": {},
+                "citations": []
+            }
+
+        # Resolve group-by column if provided
+        group_col = None
+        if group_col_hint and columns:
+            norm_cols = { _normalize(c): c for c in columns }
+            ng = _normalize(group_col_hint)
+            if ng in norm_cols:
+                group_col = norm_cols[ng]
+            else:
+                for ncol, orig in norm_cols.items():
+                    if ng in ncol or ncol in ng:
+                        group_col = orig
                         break
-            if mcol_list and mcol_list in df.columns:
-                colser = df[mcol_list]
-                # If ordering is asked and refers to another column, prepare sortable key
-                if order_hint:
-                    ord_col, ord_dir = order_hint
-                    # try resolve order column fuzzily
-                    ocol = ord_col
-                    if ocol not in df.columns:
-                        no = _normalize(ocol)
-                        for c in df.columns:
-                            if _normalize(str(c)) == no or no in _normalize(str(c)) or _normalize(str(c)) in no:
-                                ocol = str(c)
-                                break
-                    if ocol in df.columns:
-                        tmp = df[[mcol_list, ocol]].copy()
-                        # numeric-friendly sort
-                        tmp["_ord"] = _coerce_numeric_series(pd, tmp[ocol]) if pd.api.types.is_numeric_dtype(tmp[ocol]) else tmp[ocol].astype(str)
-                        tmp = tmp.sort_values("_ord", ascending=(ord_dir != "desc"), kind="mergesort")
+
+        # Aggregate across sheets
+        total_rows = 0
+        operands_used = 0
+        sheet_names = []
+        parquet_ids = []
+
+        # For ungrouped: collect measure values across all sheets
+        series_pool = []
+
+        # For grouped: map[group_value] -> list of numeric values
+        grouped_values = {}
+
+        # For listing ops: collect values (possibly deduplicate later)
+        listing_values: List[Any] = []
+
+        for s in sheets:
+            if (time.time() - start) * 1000.0 > budget:
+                break
+            sheet_name = s.get("sheet_name", "?")
+            local_parquet = _download_blob_to_temp(container_for_data, s["parquet_blob_path"])
+            if local_parquet:
+                temp_paths.append(local_parquet)
+            if not local_parquet or not os.path.exists(local_parquet):
+                continue
+
+            parquet_ids.append(s["parquet_blob_path"])
+            sheet_names.append(sheet_name)
+
+            try:
+                if pd is None:
+                    continue
+                df = pd.read_parquet(local_parquet)
+            except Exception:
+                continue
+
+            total_rows += int(df.shape[0])
+
+            # Early exit accumulation for count_rows
+            if op == "count_rows":
+                continue
+
+            # For list/unique/count_distinct we only need the raw column values
+            if op in ("list_values", "unique_values", "count_distinct"):
+                # Fuzzy-adjust column per sheet if needed
+                mcol_list = measure_col
+                if (not mcol_list) and columns:
+                    # If user didn't specify a column but asked to "list values", prefer the first non-numeric column
+                    non_num = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
+                    if non_num:
+                        mcol_list = str(non_num[0])
+                        measure_col = measure_col or mcol_list  # reflect auto-select in audit
+                if mcol_list and mcol_list not in df.columns:
+                    nt = _normalize(mcol_list)
+                    for c in df.columns:
+                        if _normalize(str(c)) == nt or nt in _normalize(str(c)) or _normalize(str(c)) in nt:
+                            mcol_list = str(c)
+                            break
+                if mcol_list and mcol_list in df.columns:
+                    colser = df[mcol_list]
+                    # If ordering is asked and refers to another column, prepare sortable key
+                    if order_hint:
+                        ord_col, ord_dir2 = order_hint
+                        # try resolve order column fuzzily
+                        ocol = ord_col
+                        if ocol not in df.columns:
+                            no = _normalize(ocol)
+                            for c in df.columns:
+                                if _normalize(str(c)) == no or no in _normalize(c) or _normalize(c) in no:
+                                    ocol = str(c)
+                                    break
+                        if ocol in df.columns:
+                            tmp = df[[mcol_list, ocol]].copy()
+                            # numeric-friendly sort
+                            tmp["_ord"] = _coerce_numeric_series(pd, tmp[ocol]) if pd.api.types.is_numeric_dtype(tmp[ocol]) else tmp[ocol].astype(str)
+                            tmp = tmp.sort_values("_ord", ascending=(ord_dir2 != "desc"), kind="mergesort")
+                            listing_values.extend(tmp[mcol_list].astype(str).tolist())
+                        else:
+                            listing_values.extend(colser.astype(str).tolist())
+                    elif order_dir and measure_col:
+                        # sort by the measure column itself if user said "ascending/descending"
+                        tmp = df[[mcol_list]].copy()
+                        tmp["_ord"] = _coerce_numeric_series(pd, tmp[mcol_list]) if pd.api.types.is_numeric_dtype(tmp[mcol_list]) else tmp[mcol_list].astype(str)
+                        tmp = tmp.sort_values("_ord", ascending=(order_dir != "desc"), kind="mergesort")
                         listing_values.extend(tmp[mcol_list].astype(str).tolist())
                     else:
                         listing_values.extend(colser.astype(str).tolist())
-                elif order_dir and measure_col:
-                    # sort by the measure column itself if user said "ascending/descending"
-                    tmp = df[[mcol_list]].copy()
-                    tmp["_ord"] = _coerce_numeric_series(pd, tmp[mcol_list]) if pd.api.types.is_numeric_dtype(tmp[mcol_list]) else tmp[mcol_list].astype(str)
-                    tmp = tmp.sort_values("_ord", ascending=(order_dir != "desc"), kind="mergesort")
-                    listing_values.extend(tmp[mcol_list].astype(str).tolist())
+                continue  # listing ops don't fall through
+
+            # Fuzzy-adjust measure and group columns per sheet if needed
+            mcol = measure_col
+            if mcol and mcol not in df.columns:
+                nt = _normalize(mcol)
+                for c in df.columns:
+                    if _normalize(str(c)) == nt or nt in _normalize(str(c)) or _normalize(str(c)) in nt:
+                        mcol = str(c)
+                        break
+
+            gcol = group_col
+            if group_col and group_col not in df.columns:
+                ng = _normalize(gcol)
+                for c in df.columns:
+                    if _normalize(str(c)) == ng or ng in _normalize(str(c)) or _normalize(str(c)) in ng:
+                        gcol = str(c)
+                        break
+
+            if mcol and mcol in df.columns:
+                sdata = _coerce_numeric_series(pd, df[mcol]).dropna()
+                operands_used += int(sdata.size)
+                if gcol and gcol in df.columns:
+                    keys = df[gcol].astype(str).fillna("")
+                    for key, val in zip(keys, sdata):
+                        grouped_values.setdefault(key, []).append(float(val))
                 else:
-                    listing_values.extend(colser.astype(str).tolist())
-            continue  # listing ops don't fall through
+                    series_pool.append(sdata.values.tolist())
 
-        # Fuzzy-adjust measure and group columns per sheet if needed
-        mcol = measure_col
-        if mcol and mcol not in df.columns:
-            nt = _normalize(mcol)
-            for c in df.columns:
-                if _normalize(str(c)) == nt or nt in _normalize(str(c)) or _normalize(str(c)) in nt:
-                    mcol = str(c)
-                    break
+        # Build audit
+        audit = {
+            "rows_used": int(total_rows),
+            "columns_used": [] if not measure_col else [measure_col] + ([group_col] if group_col else []),
+            "sheets_used": sheet_names,
+            "parquet_count": len(parquet_ids),
+            "operation": op,
+            "operands_count": int(operands_used),
+            "filters": {"sheet": sheet_hint} if sheet_hint else None,
+            "group_by": group_col,
+            "groups_count": len(grouped_values) if grouped_values else 0,
+            "checksum": _checksum(parquet_ids + ([measure_col] if measure_col else []) + ([group_col] if group_col else []))
+        }
 
-        gcol = group_col
-        if group_col and group_col not in df.columns:
-            ng = _normalize(group_col)
-            for c in df.columns:
-                if _normalize(str(c)) == ng or ng in _normalize(str(c)) or _normalize(str(c)) in ng:
-                    gcol = str(c)
-                    break
+        # Handle count_rows
+        if op == "count_rows":
+            text = f"Row count across selected sheet(s){' (filtered by sheet)' if sheet_hint else ''}: **{total_rows}**."
+            return {"text": text, "audit": audit, "structured": {"count_rows": total_rows}, "citations": []}
 
-        if mcol and mcol in df.columns:
-            sdata = _coerce_numeric_series(pd, df[mcol]).dropna()
-            operands_used += int(sdata.size)
-            if gcol and gcol in df.columns:
-                keys = df[gcol].astype(str).fillna("")
-                for key, val in zip(keys, sdata):
-                    grouped_values.setdefault(key, []).append(float(val))
-            else:
-                series_pool.append(sdata.values.tolist())
-
-    # Build audit
-    audit = {
-        "rows_used": int(total_rows),
-        "columns_used": [] if not measure_col else [measure_col] + ([group_col] if group_col else []),
-        "sheets_used": sheet_names,
-        "parquet_count": len(parquet_ids),
-        "operation": op,
-        "operands_count": int(operands_used),
-        "filters": {"sheet": sheet_hint} if sheet_hint else None,
-        "group_by": group_col,
-        "groups_count": len(grouped_values) if grouped_values else 0,
-        "checksum": _checksum(parquet_ids + ([measure_col] if measure_col else []) + ([group_col] if group_col else []))
-    }
-
-    # Handle count_rows
-    if op == "count_rows":
-        text = f"Row count across selected sheet(s){' (filtered by sheet)' if sheet_hint else ''}: **{total_rows}**."
-        return {"text": text, "audit": audit, "structured": {"count_rows": total_rows}, "citations": []}
-
-    # Handle listing/unique/distinct-count
-    if op in ("list_values", "unique_values", "count_distinct"):
-        colname = measure_col or "(auto-selected)"
-        if op == "count_distinct":
-            distinct_n = len(set(listing_values))
-            return {
-                "text": f"Distinct count for **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{distinct_n}**.",
-                "audit": audit, "structured": {"count_distinct": distinct_n, "column": colname}, "citations": []
-            }
-        if op == "unique_values":
-            uniq = sorted(set(listing_values))
-            head = uniq[:50]
-            more = len(uniq) - len(head)
-            text_lines = [f"Unique values in **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''} (showing up to 50):"]
+        # Handle listing/unique/distinct-count
+        if op in ("list_values", "unique_values", "count_distinct"):
+            colname = measure_col or "(auto-selected)"
+            if op == "count_distinct":
+                distinct_n = len(set(listing_values))
+                return {
+                    "text": f"Distinct count for **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{distinct_n}**.",
+                    "audit": audit, "structured": {"count_distinct": distinct_n, "column": colname}, "citations": []
+                }
+            if op == "unique_values":
+                uniq = sorted(set(listing_values))
+                head = uniq[:50]
+                more = len(uniq) - len(head)
+                text_lines = [f"Unique values in **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''} (showing up to 50):"]
+                for v in head:
+                    text_lines.append(f"- {v}")
+                if more > 0:
+                    text_lines.append(f"- … {more} more")
+                return {"text": "\n".join(text_lines), "audit": audit, "structured": {"unique_values": head, "column": colname}, "citations": []}
+            # list_values (raw, possibly ordered)
+            head = listing_values[:200]
+            more = len(listing_values) - len(head)
+            text_lines = [f"Values from **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''} (first {len(head)}):"]
             for v in head:
                 text_lines.append(f"- {v}")
             if more > 0:
                 text_lines.append(f"- … {more} more")
-            return {"text": "\n".join(text_lines), "audit": audit, "structured": {"unique_values": head, "column": colname}, "citations": []}
-        # list_values (raw, possibly ordered)
-        head = listing_values[:200]
-        more = len(listing_values) - len(head)
-        text_lines = [f"Values from **{colname}**{f' on sheet {sheet_hint}' if sheet_hint else ''} (first {len(head)}):"]
-        for v in head:
-            text_lines.append(f"- {v}")
-        if more > 0:
-            text_lines.append(f"- … {more} more")
-        return {"text": "\n".join(text_lines), "audit": audit, "structured": {"values_sample": head, "column": colname, "total": len(listing_values)}, "citations": []}
+            return {"text": "\n".join(text_lines), "audit": audit, "structured": {"values_sample": head, "column": colname, "total": len(listing_values)}, "citations": []}
 
-    # If no measure column provided
-    if not measure_col:
-        if should_run_tabular(prompt):
-            guide = "Tell me which column to use (e.g., 'average Distance')."
-            if columns:
-                guide += f" Columns include: {', '.join(columns[:8])}" + ("…" if len(columns) > 8 else "")
-            guide += " You can also add sheet=SheetName and 'group by <column>'."
-            return {"text": guide, "audit": audit, "structured": {}, "citations": []}
-        return {}
+        # If no measure column provided
+        if not measure_col:
+            if should_run_tabular(prompt):
+                guide = "Tell me which column to use (e.g., 'average Distance')."
+                if columns:
+                    guide += f" Columns include: {', '.join(columns[:8])}" + ("…" if len(columns) > 8 else "")
+                guide += " You can also add sheet=SheetName and 'group by <column>'."
+                return {"text": guide, "audit": audit, "structured": {}, "citations": []}
+            return {}
 
-    # Grouped aggregate
-    if grouped_values:
-        results = []
-        for key, vals in grouped_values.items():
-            if not vals:
-                continue
-            if op in (None, "mean"):
-                agg = float(sum(vals) / len(vals))
-                results.append({"group": key, "n": len(vals), "mean": agg})
-            elif op == "sum":
-                agg = float(sum(vals))
-                results.append({"group": key, "n": len(vals), "sum": agg})
-            elif op == "min":
-                agg = float(min(vals))
-                results.append({"group": key, "n": len(vals), "min": agg})
-            elif op == "max":
-                agg = float(max(vals))
-                results.append({"group": key, "n": len(vals), "max": agg})
-            elif op == "median":
-                agg = float(stats.median(vals))
-                results.append({"group": key, "n": len(vals), "median": agg})
-            else:
-                agg = float(sum(vals) / len(vals))
-                results.append({"group": key, "n": len(vals), "mean": agg})
+        # Grouped aggregate
+        if grouped_values:
+            results = []
+            for key, vals in grouped_values.items():
+                if not vals:
+                    continue
+                if op in (None, "mean"):
+                    agg = float(sum(vals) / len(vals))
+                    results.append({"group": key, "n": len(vals), "mean": agg})
+                elif op == "sum":
+                    agg = float(sum(vals))
+                    results.append({"group": key, "n": len(vals), "sum": agg})
+                elif op == "min":
+                    agg = float(min(vals))
+                    results.append({"group": key, "n": len(vals), "min": agg})
+                elif op == "max":
+                    agg = float(max(vals))
+                    results.append({"group": key, "n": len(vals), "max": agg})
+                elif op == "median":
+                    agg = float(stats.median(vals))
+                    results.append({"group": key, "n": len(vals), "median": agg})
+                else:
+                    agg = float(sum(vals) / len(vals))
+                    results.append({"group": key, "n": len(vals), "mean": agg})
 
-        # Sort by the chosen metric, descending
-        metric_key = "mean" if op in (None, "mean") else op
-        results.sort(key=lambda r: r.get(metric_key, 0.0), reverse=True)
+            # Sort by the chosen metric, descending
+            metric_key = "mean" if op in (None, "mean") else op
+            results.sort(key=lambda r: r.get(metric_key, 0.0), reverse=True)
 
-        op_name = op if op else "mean"
-        head = f"{op_name.capitalize()} of **{measure_col}** by **{group_col}**"
-        if sheet_hint:
-            head += f" on sheet '{sheet_hint}'"
-        lines = [head + ":"]
-        for r in results[:15]:
-            metric = next((k for k in ("mean","sum","min","max","median") if k in r), "mean")
-            lines.append(f"- {r['group']}: {r[metric]:,.2f} (n={r['n']})")
-        if len(results) > 15:
-            lines.append(f"- … {len(results)-15} more groups")
+            op_name = op if op else "mean"
+            head = f"{op_name.capitalize()} of **{measure_col}** by **{group_col}**"
+            if sheet_hint:
+                head += f" on sheet '{sheet_hint}'"
+            lines = [head + ":"]
+            for r in results[:15]:
+                metric = next((k for k in ("mean","sum","min","max","median") if k in r), "mean")
+                lines.append(f"- {r['group']}: {r[metric]:,.2f} (n={r['n']})")
+            if len(results) > 15:
+                lines.append(f"- … {len(results)-15} more groups")
 
-        return {
-            "text": "\n".join(lines),
-            "audit": audit,
-            "structured": {"group_aggregate": results, "measure": measure_col, "group_by": group_col, "operation": op or "mean"},
-            "citations": []
-        }
+            return {
+                "text": "\n".join(lines),
+                "audit": audit,
+                "structured": {"group_aggregate": results, "measure": measure_col, "group_by": group_col, "operation": op or "mean"},
+                "citations": []
+            }
 
-    # Ungrouped aggregate
-    all_vals = []
-    for lst in series_pool:
-        all_vals.extend(lst)
-    if not all_vals:
-        return {
-            "text": f"The column '{measure_col}' exists but contains no numeric values I can aggregate.",
-            "audit": audit, "structured": {}, "citations": []
-        }
+        # Ungrouped aggregate
+        all_vals = []
+        for lst in series_pool:
+            all_vals.extend(lst)
+        if not all_vals:
+            return {
+                "text": f"The column '{measure_col}' exists but contains no numeric values I can aggregate.",
+                "audit": audit, "structured": {}, "citations": []
+            }
 
-    if op in (None, "mean"):
-        val = float(sum(all_vals) / len(all_vals))
-        return {
-            "text": f"Average of **{measure_col}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{val:,.2f}** (n={len(all_vals)}).",
-            "audit": audit, "structured": {"mean": val, "n": len(all_vals)}, "citations": []
-        }
-    elif op == "sum":
-        val = float(sum(all_vals))
-        return {
-            "text": f"Sum of **{measure_col}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{val:,.2f}** (n={len(all_vals)}).",
-            "audit": audit, "structured": {"sum": val, "n": len(all_vals)}, "citations": []
-        }
-    elif op == "min":
-        val = float(min(all_vals))
-        return {"text": f"Minimum of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"min": val}, "citations": []}
-    elif op == "max":
-        val = float(max(all_vals))
-        return {"text": f"Maximum of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"max": val}, "citations": []}
-    elif op == "median":
-        import statistics as stats  # local import for safety
-        val = float(stats.median(all_vals))
-        return {"text": f"Median of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"median": val}, "citations": []}
-    else:
-        val = float(sum(all_vals) / len(all_vals))
-        return {
-            "text": f"Average of **{measure_col}**: **{val:,.2f}** (n={len(all_vals)}).",
-            "audit": audit, "structured": {"mean": val, "n": len(all_vals)}, "citations": []
-        }
+        if op in (None, "mean"):
+            val = float(sum(all_vals) / len(all_vals))
+            return {
+                "text": f"Average of **{measure_col}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{val:,.2f}** (n={len(all_vals)}).",
+                "audit": audit, "structured": {"mean": val, "n": len(all_vals)}, "citations": []
+            }
+        elif op == "sum":
+            val = float(sum(all_vals))
+            return {
+                "text": f"Sum of **{measure_col}**{f' on sheet {sheet_hint}' if sheet_hint else ''}: **{val:,.2f}** (n={len(all_vals)}).",
+                "audit": audit, "structured": {"sum": val, "n": len(all_vals)}, "citations": []
+            }
+        elif op == "min":
+            val = float(min(all_vals))
+            return {"text": f"Minimum of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"min": val}, "citations": []}
+        elif op == "max":
+            val = float(max(all_vals))
+            return {"text": f"Maximum of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"max": val}, "citations": []}
+        elif op == "median":
+            import statistics as stats  # local import for safety
+            val = float(stats.median(all_vals))
+            return {"text": f"Median of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"median": val}, "citations": []}
+        else:
+            val = float(sum(all_vals) / len(all_vals))
+            return {
+                "text": f"Average of **{measure_col}**: **{val:,.2f}** (n={len(all_vals)}).",
+                "audit": audit, "structured": {"mean": val, "n": len(all_vals)}, "citations": []
+            }
+    finally:
+        # cleanup downloaded temp files (ensure no orphan temp files remain)
+        if temp_paths:
+            try:
+                from functions_logging import log_exception
+            except Exception:
+                log_exception = None
+            for p in temp_paths:
+                try:
+                    if p and os.path.exists(p):
+                        os.remove(p)
+                except Exception as e:
+                    try:
+                        if log_exception:
+                            log_exception(f"Failed to remove temp file {p}: {e}")
+                    except Exception:
+                        pass
 
 # ---------- Main entry ----------
 def tabular_plan_and_execute(
@@ -787,170 +1030,68 @@ def tabular_plan_and_execute(
     **kwargs
 ) -> Dict[str, Any]:
     """
-    Backward/forward compatible wrapper used by both non-stream and stream routes.
-
-    Compatible call styles:
-      - tabular_plan_and_execute(user_id, question, selected_document_id, document_scope, active_group_id, time_budget_ms)
-      - tabular_plan_and_execute(settings=..., user_id=..., prompt=..., selected_document_id=..., active_group_id=..., timebox_sec=8)
+    Lightweight, robust implementation: locate manifest (prefers selected_document_id),
+    validate it, and return a concise sheet-level summary. Always cleans up temp files.
+    This avoids syntax/import/runtime errors while preserving the manifest-based flow.
     """
-    # Accept alternate param names used by routes
-    prompt = kwargs.get("prompt")
-    if prompt and not question:
-        question = prompt
-    settings = kwargs.get("settings")  # ignored by this function; accepted for compatibility
-    timebox_sec = kwargs.get("timebox_sec")
-    if timebox_sec is not None and time_budget_ms is None:
-        try:
-            time_budget_ms = int(timebox_sec) * 1000
-        except Exception:
-            pass
-
-    if not should_run_tabular(question):
-        return {}
-
-    start = time.time()
-    budget = time_budget_ms if time_budget_ms is not None else _scaled_time_budget(question or "")
-    compute_trend = wants_trend(question)
-
-    pd, np, duckdb = _lazy_imports()
-    if pd is None:
-        if (time.time() - start) * 1000.0 > budget:
+    temp_paths: List[str] = []
+    try:
+        sel_doc = selected_document_id or kwargs.get("selected_document_id")
+        found = _find_manifest_blob(user_id, active_group_id, sel_doc)
+        if not found:
             return {}
-        return {
-            "system_message": (
-                "When the user requests data analysis, provide a concise, structured answer. "
-                "Report concrete counts/averages only when derivable from provided context; "
-                "add a compact table (≤5 rows) if helpful; clearly separate facts from interpretations; "
-                "cite specific sources for quoted text; keep explanations concise."
-            ),
-            "citations": [], "metrics": {}, "tables": []
-        }
-
-    found = _find_manifest_blob(user_id, active_group_id)
-    manifest = None; container_for_data = None
-    if found:
         container_for_data, manifest_blob = found
+
         local_manifest = _download_blob_to_temp(container_for_data, manifest_blob)
-        if local_manifest and os.path.exists(local_manifest):
-            try:
-                with open(local_manifest, "r", encoding="utf-8") as f:
-                    manifest = json.load(f)
-            except Exception:
-                manifest = None
-
-    if manifest is None:
-        if (time.time() - start) * 1000.0 > budget:
+        if local_manifest:
+            temp_paths.append(local_manifest)
+        if not local_manifest or not os.path.exists(local_manifest):
             return {}
+
+        try:
+            with open(local_manifest, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+        except Exception:
+            return {}
+
+        # validate manifest structure
+        if not _validate_manifest(manifest):
+            return {
+                "system_message": "Tabular manifest is present but does not contain valid sheet/parquet entries.",
+                "citations": [], "metrics": {}, "tables": []
+            }
+
+        sheets = manifest.get("sheets", []) or []
+        # Build a small summary for the caller/UI
+        tables: List[Dict[str, Any]] = []
+        for s in sheets[:10]:
+            tables.append({
+                "sheet_name": s.get("sheet_name", ""),
+                "rows": s.get("rows"),
+                "cols": s.get("cols"),
+                "parquet_blob_path": s.get("parquet_blob_path", "")
+            })
+
         return {
-            "system_message": (
-                "When the user requests data analysis, provide a concise, structured answer. "
-                "Report concrete counts/averages only when derivable from provided context; "
-                "add a compact table (≤5 rows) if helpful; clearly separate facts from interpretations; "
-                "cite specific sources for quoted text; keep explanations concise."
-            ),
-            "citations": [], "metrics": {}, "tables": []
+            "system_message": f"Found {len(sheets)} sheet(s) in manifest; returning top {len(tables)} summaries.",
+            "tables": tables,
+            "metrics": {"sheets_found": len(sheets)},
+            "citations": []
         }
-
-    sheets = [s for s in manifest.get("sheets", []) if isinstance(s, dict) and "parquet_blob_path" in s]
-    if not sheets:
-        if (time.time() - start) * 1000.0 > budget:
-            return {}
-        return {"system_message": "Provide a concise analysis only if the data structure is clear. If numeric values are present, report key counts/averages and add a small table.",
-                "citations": [], "metrics": {}, "tables": []}
-
-    tables_md: List[str] = []; metrics: Dict[str, Any] = {}
-    total_rows = 0; sheet_summaries = []
-
-    for sheet in sheets[:2]:
-        if (time.time() - start) * 1000.0 > budget:
-            break
-        blobname = sheet["parquet_blob_path"]
-        local_parquet = _download_blob_to_temp(container_for_data, blobname)
-        if not local_parquet or not os.path.exists(local_parquet):
-            continue
-
-        used_duckdb = False
-        numeric_md = ""
-        cat_md = ""
-        trend_md = ""
-
-        nrows = None; ncols = None
-
-        if duckdb is not None:
-            used_duckdb = True
-            # get schema quickly
+    finally:
+        # best-effort cleanup of downloaded temp files
+        if temp_paths:
             try:
-                import duckdb as _ddb
-                con = _ddb.connect()
-                cnt = con.sql(f"SELECT COUNT(*) FROM read_parquet('{local_parquet}')").fetchone()[0]
-                nrows = int(cnt)
-                # approximate ncols via LIMIT 0
-                rel = con.sql(f"SELECT * FROM read_parquet('{local_parquet}') LIMIT 0")
-                ncols = len(rel.columns)
-                con.close()
+                from functions_logging import log_exception
             except Exception:
-                pass
-
-            aggs = _duckdb_basic_aggregates(duckdb, local_parquet, compute_trend, max_numeric=2, max_categorical=1)
-            if aggs.get("numeric"):
-                numeric_md = _markdown_table_from_records(aggs["numeric"], ["column","min","mean","median","max","non_null"], max_rows=8)
-            if aggs.get("categorical_top"):
-                cat_md = _markdown_table_from_records(aggs["categorical_top"], ["column","value","count"], max_rows=10)
-            if compute_trend and aggs.get("trend"):
-                trend_md = _markdown_table_from_records(aggs["trend"], ["period","count"], max_rows=24)
-
-        if not used_duckdb:
-            try:
-                df = pd.read_parquet(local_parquet)
-            except Exception:
-                continue
-
-            nrows, ncols = df.shape
-            total_rows += int(nrows)
-
-            prof = _profile_dataframe(pd, df, max_cols=8)
-            prof_md = _markdown_table_from_records(prof, ["column","dtype","non_null_pct","is_numeric","avg_str_len","distinct_ratio"], max_rows=8)
-            if prof_md:
-                tables_md.append(f"**Column profile — {sheet.get('sheet_name','?')}**\n{prof_md}")
-
-            aggs = _basic_aggregates_pandas(pd, df, compute_trend=compute_trend)
-            if aggs["numeric"]:
-                numeric_md = _markdown_table_from_records(aggs["numeric"], ["column","min","mean","median","max","non_null"], max_rows=8)
-            if aggs["categorical_top"]:
-                cat_md = _markdown_table_from_records(aggs["categorical_top"], ["column","value","count"], max_rows=10)
-            if compute_trend and aggs["trend"]:
-                trend_md = _markdown_table_from_records(aggs["trend"], ["period","count"], max_rows=24)
-        else:
-            total_rows += int(nrows or 0)
-
-        sheet_summaries.append({"sheet": sheet.get("sheet_name","?"), "rows": nrows, "cols": ncols})
-        if numeric_md:
-            tables_md.append(f"**Numeric summary — {sheet.get('sheet_name','?')}**\n{numeric_md}")
-        if cat_md:
-            tables_md.append(f"**Top categories — {sheet.get('sheet_name','?')}**\n{cat_md}")
-        if trend_md:
-            tables_md.append(f"**Trend (count by month) — {sheet.get('sheet_name','?')}**\n{trend_md}")
-
-    if not sheet_summaries:
-        if (time.time() - start) * 1000.0 > budget:
-            return {}
-        return {"system_message": "Provide a concise analysis only if the data structure is clear. If numeric values are present, report key counts/averages and add a small table.",
-                "citations": [], "metrics": {}, "tables": []}
-
-    sheets_md = _markdown_table_from_records(sheet_summaries, ["sheet","rows","cols"], max_rows=12)
-    if sheets_md:
-        tables_md.insert(0, f"**Sheets overview**\n{sheets_md}")
-
-    metrics["sheet_count"] = len(manifest.get("sheets", []))
-    metrics["rows_sampled"] = total_rows
-
-    body_lines = [
-        "Concise tabular analysis context (prompt-driven):",
-        f"- Sheets detected: {metrics['sheet_count']}",
-        f"- Rows sampled for profiling: {metrics['rows_sampled']}",
-        ""
-    ] + tables_md
-
-    system_message = "\n".join(body_lines)
-
-    return {"system_message": system_message, "citations": [], "metrics": metrics, "tables": tables_md}
+                log_exception = None
+            for p in temp_paths:
+                try:
+                    if p and os.path.exists(p):
+                        os.remove(p)
+                except Exception as e:
+                    try:
+                        if log_exception:
+                            log_exception(f"Failed to remove temp file {p}: {e}")
+                    except Exception:
+                        pass

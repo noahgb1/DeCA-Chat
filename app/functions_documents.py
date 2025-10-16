@@ -8,6 +8,219 @@ from functions_logging import *
 from functions_authentication import *
 import re
 import hashlib
+import json
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+import os
+import tempfile
+import math
+import traceback
+import pandas as pd
+import requests
+import fitz
+import time
+from typing import Callable
+
+# Flask helper (routes expect jsonify). Provide safe fallback for non-Flask contexts.
+try:
+    from flask import jsonify
+except Exception:
+    def jsonify(obj):
+        return obj
+
+# HTML parsing: prefer bs4 but allow graceful fallback (file-level logic checks for None).
+try:
+    from bs4 import BeautifulSoup
+except Exception:
+    BeautifulSoup = None
+
+# Text splitters: try to import explicit classes (functions_content may already provide them via star import).
+try:
+    from functions_content import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
+except Exception:
+    try:
+        from some_text_utils import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
+    except Exception:
+        RecursiveCharacterTextSplitter = None
+        MarkdownHeaderTextSplitter = None
+
+# Azure Search batch helper: import if available, else set to None (delete_document_chunks checks for this).
+try:
+    from azure.search.documents import IndexDocumentsBatch
+except Exception:
+    IndexDocumentsBatch = None
+
+# Ensure Cosmos exception is available (already attempted earlier)
+try:
+    from azure.cosmos.exceptions import CosmosResourceNotFoundError
+except Exception:
+    CosmosResourceNotFoundError = Exception
+
+def _write_tabular_manifest(container_name: str, prefix: Optional[str], document_id: str, sheets: List[Dict[str, Any]], source_blob: Optional[str] = None) -> bool:
+    """
+    Low-level manifest writer. Prefer using the configured CLIENTS blob client when available;
+    fall back to AZURE_STORAGE_CONNECTION_STRING / BlobServiceClient if not.
+    Writes JSON to blob path: <prefix><document_id>__manifest.json
+    Returns True on success, False on failure. Best-effort (does not raise).
+    """
+    blob_path = f"{(prefix or '')}{document_id}__manifest.json"
+    manifest = {
+        "document_id": document_id,
+        "source_blob_path": source_blob,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "sheets": sheets
+    }
+    try:
+        # Prefer the initialized CLIENTS blob service if present (safer in this app)
+        try:
+            blob_service_client = CLIENTS.get("storage_account_office_docs_client")
+        except Exception:
+            blob_service_client = None
+
+        if blob_service_client:
+            try:
+                container_client = blob_service_client.get_container_client(container_name)
+                blob_client = container_client.get_blob_client(blob_path)
+                blob_client.upload_blob(json.dumps(manifest, ensure_ascii=False).encode("utf-8"), overwrite=True)
+                return True
+            except Exception:
+                # If the CLIENTS-based path fails, fall through to connection-string fallback
+                pass
+
+        # Fallback: use connection string + azure.storage.blob
+        try:
+            from azure.storage.blob import BlobServiceClient
+            conn = (os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+                    or os.environ.get("AZUREWebJobsStorage") or "")
+            if not conn:
+                return False
+            bs = BlobServiceClient.from_connection_string(conn)
+            bs.get_container_client(container_name).get_blob_client(blob_path).upload_blob(
+                json.dumps(manifest, ensure_ascii=False).encode("utf-8"), overwrite=True
+            )
+            return True
+        except Exception as e:
+            try:
+                log_exception(f"_write_tabular_manifest fallback failed for document_id={document_id}: {e}")
+            except Exception:
+                pass
+            return False
+
+    except Exception as e:
+        try:
+            log_exception(f"_write_tabular_manifest failed for document_id={document_id}: {e}")
+        except Exception:
+            pass
+        return False
+
+def write_manifest_for_document(document_id: str, user_id: Optional[str], group_id: Optional[str], sheets: List[Dict[str, Any]], source_blob: Optional[str] = None) -> bool:
+    """
+    Convenience wrapper: choose container & prefix then call _write_tabular_manifest.
+    Best-effort; does not raise.
+    """
+    try:
+        # prefer group container when group_id present
+        try:
+            group_container = globals().get("storage_account_group_documents_container_name", None)
+            user_container = globals().get("storage_account_user_documents_container_name", None)
+        except Exception:
+            group_container = None
+            user_container = None
+
+        if group_id and group_container:
+            container = group_container
+            prefix = f"{group_id}/"
+        elif user_id and user_container:
+            container = user_container
+            prefix = f"{user_id}/"
+        else:
+            # fallback to in-file GROUP_CONTAINER / USER_CONTAINER if present
+            container = globals().get("GROUP_CONTAINER") or globals().get("USER_CONTAINER")
+            prefix = (f"{group_id}/" if group_id else (f"{user_id}/" if user_id else ""))
+
+        if not container:
+            return False
+
+        return _write_tabular_manifest(container, prefix, document_id, sheets, source_blob=source_blob)
+    except Exception as e:
+        try:
+            log_exception(f"write_manifest_for_document failed for document {document_id}: {e}")
+        except Exception:
+            pass
+        return False
+def read_manifest_for_document(document_id: str, user_id: Optional[str], group_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    """
+    Reads the tabular manifest JSON for a document from blob storage.
+    Looks in the same container/prefix scheme used by write_manifest_for_document().
+    Returns a dict or None if not found.
+    """
+    try:
+        # resolve container & prefix exactly like write_manifest_for_document()
+        try:
+            group_container = globals().get("storage_account_group_documents_container_name", None)
+            user_container = globals().get("storage_account_user_documents_container_name", None)
+        except Exception:
+            group_container = None
+            user_container = None
+
+        if group_id and group_container:
+            container = group_container
+            prefix = f"{group_id}/"
+        elif user_id and user_container:
+            container = user_container
+            prefix = f"{user_id}/"
+        else:
+            container = globals().get("GROUP_CONTAINER") or globals().get("USER_CONTAINER")
+            prefix = (f"{group_id}/" if group_id else (f"{user_id}/" if user_id else ""))
+
+        if not container:
+            return None
+
+        blob_path = f"{prefix}{document_id}__manifest.json"
+
+        # prefer configured CLIENTS blob service
+        try:
+            blob_service_client = CLIENTS.get("storage_account_office_docs_client")
+        except Exception:
+            blob_service_client = None
+
+        if blob_service_client:
+            try:
+                container_client = blob_service_client.get_container_client(container)
+                blob_client = container_client.get_blob_client(blob_path)
+                if not blob_client.exists():
+                    return None
+                data = blob_client.download_blob().readall()
+                return json.loads(data.decode("utf-8"))
+            except Exception:
+                pass
+
+        # fallback to connection string
+        try:
+            from azure.storage.blob import BlobServiceClient
+            conn = (os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+                    or os.environ.get("AZUREWebJobsStorage") or "")
+            if not conn:
+                return None
+            bs = BlobServiceClient.from_connection_string(conn)
+            blob_client = bs.get_container_client(container).get_blob_client(blob_path)
+            if not blob_client.exists():
+                return None
+            data = blob_client.download_blob().readall()
+            return json.loads(data.decode("utf-8"))
+        except Exception as e:
+            try:
+                log_exception(f"read_manifest_for_document fallback failed for document_id={document_id}: {e}")
+            except Exception:
+                pass
+            return None
+
+    except Exception as e:
+        try:
+            log_exception(f"read_manifest_for_document failed for document_id={document_id}: {e}")
+        except Exception:
+            pass
+        return None
 
 def allowed_file(filename, allowed_extensions=None):
     if not allowed_extensions:
@@ -1760,7 +1973,7 @@ def extract_document_metadata(document_id, user_id, group_id=None):
 
         add_file_task_to_file_processing_log(
             document_id=document_id, 
-            user_id=group_id if is_group else user_id, 
+            user_id=group_id if is_group else user_id,
             content=f"Cleaned JSON from GPT response for document {document_id}: {cleaned_str}"
         )
 
@@ -2057,10 +2270,10 @@ def process_html(document_id, user_id, temp_file_path, original_filename, enable
             if current_word_count >= min_chunk_words or i == len(initial_chunks) - 1:
                 if current_chunk_text.strip():
                     final_chunks.append(current_chunk_text)
-                buffer_chunk = "" # Reset buffer
+                buffer_chunk = ""  # Reset buffer
             else:
-                # Chunk is too small, add to buffer and continue to next chunk
-                buffer_chunk = current_chunk_text + " " # Add space between merged chunks
+                               # Chunk is too small, add to buffer and continue to next chunk
+                buffer_chunk = current_chunk_text + " "  # Add space between merged chunks
 
         num_chunks_final = len(final_chunks)
         update_callback(number_of_pages=num_chunks_final) # Use number_of_pages for chunk count
@@ -2093,13 +2306,13 @@ def process_html(document_id, user_id, temp_file_path, original_filename, enable
 
 # --- Helper function to process Markdown files ---
 def process_md(document_id, user_id, temp_file_path, original_filename, enable_enhanced_citations, update_callback, group_id=None):
-    """Processes Markdown files."""
+    """Processes Markdown files and applies small repairs for split markdown tables and code fences."""
     is_group = group_id is not None
 
     update_callback(status="Processing Markdown file...")
     total_chunks_saved = 0
-    target_chunk_words = 1200 # Target size based on requirement
-    min_chunk_words = 600 # Minimum size based on requirement
+    target_chunk_words = 1200
+    min_chunk_words = 600
 
     if enable_enhanced_citations:
         args = {
@@ -2109,10 +2322,8 @@ def process_md(document_id, user_id, temp_file_path, original_filename, enable_e
             "blob_filename": original_filename,
             "update_callback": update_callback
         }
-
         if is_group:
             args["group_id"] = group_id
-
         upload_to_blob(**args)
 
     try:
@@ -2127,37 +2338,72 @@ def process_md(document_id, user_id, temp_file_path, original_filename, enable_e
             ("#####", "Header 5"),
         ]
 
-        # Use MarkdownHeaderTextSplitter first
         md_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on, return_each_line=False)
         md_header_splits = md_splitter.split_text(md_content)
-
         initial_chunks_content = [doc.page_content for doc in md_header_splits]
 
-        # TODO: Advanced Table/Code Block Handling:
-        # - Table header replication requires identifying markdown tables (`|---|`),
-        #   detecting splits, and injecting headers.
-        # - Code block wrapping requires detecting ``` blocks split across chunks and
-        #   adding start/end fences.
-        # This requires complex regex or stateful parsing during/after splitting.
-        # For now, we focus on the text splitting and minimum size merging.
+        # Minimal table header replication:
+        # If a chunk starts with a table row (|...), try to find a header in previous text and prepend it.
+        repaired_chunks = []
+        last_table_header = None
+        for chunk in initial_chunks_content:
+            trimmed = chunk.lstrip()
+            # detect md table header separator present in chunk to capture header from chunk if present
+            # pattern: header row followed by line with pipes and --- (e.g. |---| or ---)
+            lines = chunk.splitlines()
+            if len(lines) >= 2:
+                # detect header + separator
+                if re.match(r'^\s*\|?.+\|?\s*$', lines[0]) and re.match(r'^\s*\|?\s*:?-{3,}:?\s*(\||$)', lines[1]):
+                    # header exists in this chunk
+                    last_table_header = lines[0]
+                    repaired_chunks.append(chunk)
+                    continue
+            # if chunk starts with a table row but no header in this chunk, prepend last known header
+            if trimmed.startswith("|"):
+                if last_table_header:
+                    repaired_chunks.append(last_table_header + "\n" + chunk)
+                else:
+                    repaired_chunks.append(chunk)
+            else:
+                repaired_chunks.append(chunk)
 
-        # Post-processing: Merge small chunks based on word count
+        # Simple code-fence balancing repair:
+        # Ensure that each chunk has matched triple-backtick fences; if odd count, attempt to close/open fences.
+        balanced_chunks = []
+        fence_open = False
+        for chunk in repaired_chunks:
+            fence_count = chunk.count("```")
+            # If odd, attempt to balance using bookkeeping across chunks
+            if fence_count % 2 == 1:
+                # If currently not in a fence, we saw an opening fence — mark open and append chunk
+                if not fence_open:
+                    fence_open = True
+                    balanced_chunks.append(chunk)
+                else:
+                    # we are inside a fence and saw an odd count — close it
+                    fence_open = False
+                    balanced_chunks.append(chunk + "\n```")
+            else:
+                balanced_chunks.append(chunk)
+        # If we ended still inside a fence, close it on the last chunk
+        if fence_open and balanced_chunks:
+            balanced_chunks[-1] = balanced_chunks[-1] + "\n```"
+
+        initial_chunks_content = balanced_chunks
+
+        # Merge small chunks (existing logic)
         final_chunks = []
         buffer_chunk = ""
         for i, chunk_text in enumerate(initial_chunks_content):
-            current_chunk_text = buffer_chunk + chunk_text # Combine with buffer first
+            current_chunk_text = buffer_chunk + chunk_text
             current_word_count = estimate_word_count(current_chunk_text)
-
-            # Merge if current chunk alone (without buffer) is too small, UNLESS it's the last one
-            # Or, more simply, accumulate until the buffer meets the minimum size
             if current_word_count >= min_chunk_words or i == len(initial_chunks_content) - 1:
-                 # If the combined chunk meets min size OR it's the last chunk, save it
                 if current_chunk_text.strip():
-                     final_chunks.append(current_chunk_text)
-                buffer_chunk = "" # Reset buffer
+                    final_chunks.append(current_chunk_text)
+                buffer_chunk = ""  # Reset buffer
             else:
-                # Accumulate in buffer if below min size and not the last chunk
-                buffer_chunk = current_chunk_text + "\n\n" # Add separator when buffering
+                # Chunk is too small, add to buffer and continue to next chunk
+                buffer_chunk = current_chunk_text + "\n\n"
 
         num_chunks_final = len(final_chunks)
         update_callback(number_of_pages=num_chunks_final)
@@ -2174,10 +2420,8 @@ def process_md(document_id, user_id, temp_file_path, original_filename, enable_e
                 "user_id": user_id,
                 "document_id": document_id
             }
-
             if is_group:
                 args["group_id"] = group_id
-
             save_chunks(**args)
             total_chunks_saved += 1
 
@@ -2285,26 +2529,44 @@ def process_json(document_id, user_id, temp_file_path, original_filename, enable
 
 
 # --- Helper function to process a single Tabular sheet (CSV or Excel tab) ---
-def process_single_tabular_sheet(df, document_id, user_id, file_name, update_callback, group_id=None):
-    """Chunks a pandas DataFrame from a CSV or Excel sheet."""
+def process_single_tabular_sheet(
+    document_id,
+    user_id,
+    df,                      # DataFrame to chunk and potentially write to parquet
+    file_name,               # effective filename for this sheet (may include sheet name suffix)
+    update_callback,
+    sheet_name="",
+    rows=None,
+    cols=None,
+    group_id=None,
+    original_blob_path=None,
+    sheets_list: Optional[List[Dict[str, Any]]] = None
+):
+    """Chunks a pandas DataFrame from a CSV or Excel sheet and optionally writes & uploads a parquet for that sheet.
+
+    Appends a sheet descriptor (sheet_name, parquet_blob_path, rows, cols) to sheets_list if provided.
+    Returns the number of chunks saved.
+    """
     is_group = group_id is not None
 
     total_chunks_saved = 0
     target_chunk_size_chars = 800 # Requirement: "800 size chunk" (assuming characters)
 
-    if df.empty:
-        print(f"Skipping empty sheet/file: {file_name}")
-        return 0
+    # Ensure df is a pandas DataFrame
+    if df is None or not hasattr(df, "columns"):
+        raise ValueError("process_single_tabular_sheet requires a pandas DataFrame `df`")
 
-    # Get header
+    # Prepare stable base_name early to avoid NameError later
+    base_name = os.path.splitext(file_name)[0]
+
+    # Create header CSV string
     header = df.columns.tolist()
-    header_string = ",".join(map(str, header)) + "\n" # CSV representation of header
+    header_string = ",".join(map(str, header)) + "\n"  # CSV header line
 
-    # Prepare rows as strings (e.g., CSV format)
+    # Prepare rows as strings (CSV-like)
     rows_as_strings = []
     for _, row in df.iterrows():
-        # Convert row to string, handling potential NaNs and types
-        row_string = ",".join(map(lambda x: str(x) if pd.notna(x) else "", row.tolist())) + "\n"
+        row_string = ",".join(map(lambda x: str(x) if (x is not None and (not (isinstance(x, float) and str(x) == 'nan'))) else "", row.tolist())) + "\n"
         rows_as_strings.append(row_string)
 
     # Chunk rows based on character count
@@ -2314,37 +2576,38 @@ def process_single_tabular_sheet(df, document_id, user_id, file_name, update_cal
 
     for row_str in rows_as_strings:
         row_len = len(row_str)
-        # If adding the current row exceeds the limit AND the chunk already has content
         if current_chunk_char_count + row_len > target_chunk_size_chars and current_chunk_rows:
-            # Finalize the current chunk
             final_chunks_content.append("".join(current_chunk_rows))
-            # Start a new chunk with the current row
             current_chunk_rows = [row_str]
             current_chunk_char_count = row_len
         else:
-            # Add row to the current chunk
             current_chunk_rows.append(row_str)
             current_chunk_char_count += row_len
 
-    # Add the last remaining chunk if it has content
     if current_chunk_rows:
         final_chunks_content.append("".join(current_chunk_rows))
 
     num_chunks_final = len(final_chunks_content)
-    # Update total pages estimate once at the start of processing this sheet
-    # Note: This might overwrite previous updates if called multiple times for excel sheets.
-    # Consider accumulating page count in the caller if needed.
-    update_callback(number_of_pages=num_chunks_final)
+    # Inform caller of expected chunk count
+    try:
+        update_callback(number_of_pages=num_chunks_final)
+    except Exception:
+        pass
+
+    # NEW: add an explicit sheet tag line so save_chunks() can extract sheet_name reliably
+    sheet_tag = f"[Sheet: {sheet_name or base_name}]\n"
 
     # Save chunks, prepending the header to each
     for idx, chunk_rows_content in enumerate(final_chunks_content, start=1):
-        # Prepend header - header length does not count towards chunk size limit
-        chunk_with_header = header_string + chunk_rows_content
-
-        update_callback(
-            current_file_chunk=idx,
-            status=f"Saving chunk {idx}/{num_chunks_final} from {file_name}..."
-        )
+        # prepend sheet tag + header so downstream regex in save_chunks can capture sheet name
+        chunk_with_header = sheet_tag + header_string + chunk_rows_content
+        try:
+            update_callback(
+                current_file_chunk=idx,
+                status=f"Saving chunk {idx}/{num_chunks_final} from {file_name}..."
+            )
+        except Exception:
+            pass
 
         args = {
             "page_text_content": chunk_with_header,
@@ -2353,25 +2616,96 @@ def process_single_tabular_sheet(df, document_id, user_id, file_name, update_cal
             "user_id": user_id,
             "document_id": document_id
         }
-
         if is_group:
             args["group_id"] = group_id
 
         save_chunks(**args)
         total_chunks_saved += 1
 
+    # Attempt to write a Parquet for this sheet, upload it, and register in sheets_list
+    parquet_temp_path = None
+    parquet_blob_path = None
+    try:
+        # Create a unique temp file for parquet
+        fd, parquet_temp_path = tempfile.mkstemp(prefix="tabular_", suffix=".parquet")
+        os.close(fd)
+        try:
+            # Try pyarrow first, fallback to fastparquet if available
+            try:
+                df.to_parquet(parquet_temp_path, index=False, engine="pyarrow")
+            except Exception:
+                df.to_parquet(parquet_temp_path, index=False, engine="fastparquet")
+        except Exception as e:
+            # If parquet write fails, skip parquet creation but do not fail ingestion
+            try:
+                log_exception(f"Parquet write failed for {document_id}/{file_name}: {e}")
+            except Exception:
+                pass
+            parquet_temp_path = None
+
+        if parquet_temp_path and os.path.exists(parquet_temp_path):
+            parquet_blob_filename = f"{base_name}.parquet"
+            try:
+                parquet_blob_path = upload_to_blob(parquet_temp_path, user_id, document_id, 
+                    parquet_blob_filename, update_callback, group_id)
+                print(f"[Tabular] Parquet uploaded: {parquet_blob_path} (doc={document_id}, sheet={sheet_name or base_name})")
+            except Exception as e:
+                try:
+                    log_exception(f"Parquet upload failed for {document_id}/{file_name}: {e}")
+                except Exception:
+                    pass
+                print(f"[Tabular] Parquet upload FAILED (doc={document_id}, sheet={sheet_name or base_name})")
+        else:
+            print(f"[Tabular] No parquet generated; skipping upload "
+                f"(doc={document_id}, sheet={sheet_name or base_name})")
+            
+        # If caller supplied a sheets_list append a sheet descriptor
+        if sheets_list is not None:
+            sheet_desc = {"sheet_name": sheet_name or base_name, "parquet_blob_path": parquet_blob_path or ""}
+            if rows is not None:
+                try:
+                    sheet_desc["rows"] = int(rows)
+                except Exception:
+                    pass
+            if cols is not None:
+                try:
+                    sheet_desc["cols"] = int(cols)
+                except Exception:
+                    pass
+            sheets_list.append(sheet_desc)
+
+    finally:
+        # best-effort cleanup of temp parquet file
+        try:
+            if parquet_temp_path and os.path.exists(parquet_temp_path):
+                os.remove(parquet_temp_path)
+        except Exception:
+            try:
+                log_exception(f"Failed to remove temp parquet {parquet_temp_path} for document {document_id}")
+            except Exception:
+                pass
+
     return total_chunks_saved
 
 
-# --- Helper function to process Tabular files (CSV, XLSX, XLS) ---
-def process_tabular(document_id, user_id, temp_file_path, original_filename, file_ext, enable_enhanced_citations, update_callback, group_id=None):
-    """Processes CSV, XLSX, or XLS files using pandas."""
+def process_tabular(
+    document_id,
+    user_id,
+    temp_file_path,
+    original_filename,
+    update_callback,
+    group_id
+):
+    """Processes CSV, XLSX, or XLS files using pandas. Produces per-sheet parquet files and writes a deterministic manifest."""
     is_group = group_id is not None
 
-    update_callback(status=f"Processing Tabular file ({file_ext})...")
+    update_callback(status=f"Processing Tabular file ({original_filename})...")
     total_chunks_saved = 0
+    sheets: List[Dict[str, Any]] = []  # collect sheet descriptors for manifest
 
-    # Upload the original file once if enhanced citations are enabled
+    # Upload original file if enhanced citations enabled
+    settings = get_settings()
+    enable_enhanced_citations = settings.get("enable_enhanced_citations", False)
     if enable_enhanced_citations:
         args = {
             "temp_file_path": temp_file_path,
@@ -2380,689 +2714,308 @@ def process_tabular(document_id, user_id, temp_file_path, original_filename, fil
             "blob_filename": original_filename,
             "update_callback": update_callback
         }
-
         if is_group:
             args["group_id"] = group_id
-
-        upload_to_blob(**args)
+        try:
+            upload_to_blob(**args)
+        except Exception:
+            try:
+                log_exception(f"Failed to upload original tabular file for doc {document_id}")
+            except Exception:
+                pass
 
     try:
+        file_ext = os.path.splitext(original_filename)[1].lower()
         if file_ext == '.csv':
-            # Process CSV
-             # Read CSV, attempt to infer header, keep data as string initially
-            df = pd.read_csv(
-                temp_file_path, 
-                keep_default_na=False, 
-                dtype=str
+            # Read CSV into DataFrame
+            df = pd.read_csv(temp_file_path, keep_default_na=False, dtype=str)
+            chunks_from_sheet = process_single_tabular_sheet(
+                document_id=document_id,
+                user_id=user_id,
+                df=df,
+                file_name=original_filename,
+                update_callback=update_callback,
+                sheet_name="",  # CSV single sheet
+                group_id=group_id,
+                original_blob_path=original_filename,
+                sheets_list=sheets
             )
-            args = {
-                "df": df,
-                "document_id": document_id,
-                "user_id": user_id,
-                "file_name": original_filename,
-                "update_callback": update_callback
-            }
-
-            if is_group:
-                args["group_id"] = group_id
-
-            total_chunks_saved = process_single_tabular_sheet(**args)
+            total_chunks_saved = chunks_from_sheet
 
         elif file_ext in ('.xlsx', '.xls'):
-            # Process Excel (potentially multiple sheets)
-            excel_file = pd.ExcelFile(
-                temp_file_path, 
-                engine='openpyxl' if file_ext == '.xlsx' else 'xlrd'
-            )
+            # Excel: multiple sheets
+            excel_file = pd.ExcelFile(temp_file_path, engine='openpyxl' if file_ext == '.xlsx' else 'xlrd')
             sheet_names = excel_file.sheet_names
             base_name, ext = os.path.splitext(original_filename)
-
             accumulated_total_chunks = 0
             for sheet_name in sheet_names:
                 update_callback(status=f"Processing sheet '{sheet_name}'...")
-                # Read specific sheet, get values (not formulas), keep data as string
-                # Note: pandas typically reads values, not formulas by default.
                 df = excel_file.parse(sheet_name, keep_default_na=False, dtype=str)
-
-                # Create effective filename for this sheet
                 effective_filename = f"{base_name}-{sheet_name}{ext}" if len(sheet_names) > 1 else original_filename
-
-                args = {
-                    "df": df,
-                    "document_id": document_id,
-                    "user_id": user_id,
-                    "file_name": effective_filename,
-                    "update_callback": update_callback
-                }
-
-                if is_group:
-                    args["group_id"] = group_id
-
-                chunks_from_sheet = process_single_tabular_sheet(**args)
-
+                chunks_from_sheet = process_single_tabular_sheet(
+                    document_id=document_id,
+                    user_id=user_id,
+                    df=df,
+                    file_name=effective_filename,
+                    update_callback=update_callback,
+                    sheet_name=sheet_name,
+                    rows=len(df) if hasattr(df, "__len__") else None,
+                    cols=len(df.columns) if hasattr(df, "columns") else None,
+                    group_id=group_id,
+                    original_blob_path=original_filename,
+                    sheets_list=sheets
+                )
                 accumulated_total_chunks += chunks_from_sheet
+            total_chunks_saved = accumulated_total_chunks
 
-            total_chunks_saved = accumulated_total_chunks # Total across all sheets
-
+        else:
+            raise Exception(f"Unsupported tabular file extension: {file_ext}")
 
     except pd.errors.EmptyDataError:
-        print(f"Warning: Tabular file or sheet is empty: {original_filename}")
         update_callback(status=f"Warning: File/sheet is empty - {original_filename}", number_of_pages=0)
     except Exception as e:
         raise Exception(f"Failed processing Tabular file {original_filename}: {e}")
 
+    # After all per-sheet parquet uploads complete, write deterministic manifest:
+    try:
+        if sheets:
+            source = original_filename
+            ok = write_manifest_for_document(
+            document_id=document_id,
+            user_id=user_id,
+            group_id=group_id,
+            sheets=sheets,
+            source_blob=source
+            )
+            print(f"[Tabular] Manifest {'OK' if ok else 'FAILED'} "
+                f"for doc={document_id}, sheets={len(sheets)}")
+    except Exception:
+        try:
+            log_exception(f"Failed to write tabular manifest for document {document_id}")
+        except Exception:
+            pass
+
     return total_chunks_saved
 
-
-# --- Helper function for DI-supported types (PDF, DOCX, PPT, Image) ---
-# This function encapsulates the original logic for these file types
-def process_di_document(document_id, user_id, temp_file_path, original_filename, file_ext, enable_enhanced_citations, update_callback, group_id=None):
-    """Processes documents supported by Azure Document Intelligence (PDF, Word, PPT, Image)."""
-    is_group = group_id is not None
-    
-    # --- Extracted Metadata logic ---
-    doc_title, doc_author, doc_subject, doc_keywords = '', '', None, None
-    doc_authors_list = []
-    page_count = 0 # For PDF pre-check
-
-    is_pdf = file_ext == '.pdf'
-    is_word = file_ext in ('.docx', '.doc')
-    is_ppt = file_ext in ('.pptx', '.ppt')
-    is_image = file_ext in ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif')
-
-    try:
-        if is_pdf:
-            doc_title, doc_author, doc_subject, doc_keywords = extract_pdf_metadata(temp_file_path)
-            doc_authors_list = parse_authors(doc_author)
-            page_count = get_pdf_page_count(temp_file_path)
-        elif is_word:
-            doc_title, doc_author = extract_docx_metadata(temp_file_path)
-            doc_authors_list = parse_authors(doc_author)
-        # PPT and Image metadata extraction might be added here if needed/possible
-
-        update_fields = {'status': "Extracted initial metadata"}
-        if doc_title: update_fields['title'] = doc_title
-        if doc_authors_list: update_fields['authors'] = doc_authors_list
-        elif doc_author: update_fields['authors'] = [doc_author]
-        if doc_subject: update_fields['abstract'] = doc_subject
-        if doc_keywords: update_fields['keywords'] = doc_keywords
-        update_callback(**update_fields)
-
-    except Exception as e:
-        print(f"Warning: Failed to extract initial metadata for {original_filename}: {e}")
-        # Continue processing even if metadata fails
-
-    # --- DI Processing Logic ---
-    settings = get_settings() # Assuming get_settings is accessible
-    di_limit_bytes = 500 * 1024 * 1024
-    di_page_limit = 2000
-    file_size = os.path.getsize(temp_file_path)
-
-    file_paths_to_process = [temp_file_path]
-    needs_pdf_file_chunking = False
-    use_enhanced_citations_di = False # Specific flag for DI types
-
-    if enable_enhanced_citations:
-        # Enhanced citations involve blob link for PDF, PPT, Word, Image in this flow
-        use_enhanced_citations_di = True
-        update_callback(enhanced_citations=True, status=f"Enhanced citations enabled for {file_ext}")
-        # Check if PDF needs *file-level* chunking before DI/Upload
-        if is_pdf and (file_size > di_limit_bytes or (page_count > 0 and page_count > di_page_limit)):
-            needs_pdf_file_chunking = True
-    else:
-        update_callback(enhanced_citations=False, status="Enhanced citations disabled")
-
-    if needs_pdf_file_chunking:
-        try:
-            update_callback(status="Chunking large PDF file...")
-            pdf_chunk_max_pages = di_page_limit // 4 if di_page_limit > 4 else 500
-            file_paths_to_process = chunk_pdf(temp_file_path, max_pages=pdf_chunk_max_pages)
-            if not file_paths_to_process:
-                raise Exception("PDF chunking failed to produce output files.")
-            if os.path.exists(temp_file_path): os.remove(temp_file_path) # Remove original large PDF
-            print(f"Successfully chunked large PDF into {len(file_paths_to_process)} files.")
-        except Exception as e:
-            raise Exception(f"Failed to chunk PDF file: {str(e)}")
-
-    num_file_chunks = len(file_paths_to_process)
-    update_callback(num_file_chunks=num_file_chunks, status=f"Processing {original_filename} in {num_file_chunks} file chunk(s)")
-
-    total_final_chunks_processed = 0
-    for idx, chunk_path in enumerate(file_paths_to_process, start=1):
-        chunk_base_name, chunk_ext_loop = os.path.splitext(original_filename)
-        chunk_effective_filename = original_filename
-        if num_file_chunks > 1:
-            chunk_effective_filename = f"{chunk_base_name}_chunk_{idx}{chunk_ext_loop}"
-        print(f"Processing DI file chunk {idx}/{num_file_chunks}: {chunk_effective_filename}")
-
-        update_callback(status=f"Processing file chunk {idx}/{num_file_chunks}: {chunk_effective_filename}")
-
-        # Upload to Blob (if enhanced citations enabled for these types)
-        if use_enhanced_citations_di:
-            args = {
-                "temp_file_path": temp_file_path,
-                "user_id": user_id,
-                "document_id": document_id,
-                "blob_filename": chunk_effective_filename,
-                "update_callback": update_callback
-            }
-
-            if is_group:
-                args["group_id"] = group_id
-
-            upload_to_blob(**args)
-
-        # Send chunk to Azure DI
-        update_callback(status=f"Sending {chunk_effective_filename} to Azure Document Intelligence...")
-        di_extracted_pages = []
-        try:
-            di_extracted_pages = extract_content_with_azure_di(chunk_path)
-            num_di_pages = len(di_extracted_pages)
-            conceptual_pages = num_di_pages if not is_image else 1 # Image is one conceptual item
-
-            if not di_extracted_pages and not is_image:
-                print(f"Warning: Azure DI returned no content pages for {chunk_effective_filename}.")
-                status_msg = f"Azure DI found no content in {chunk_effective_filename}."
-                # Update page count to 0 if nothing found, otherwise keep previous estimate or conceptual count
-                update_callback(number_of_pages=0 if idx == num_file_chunks else conceptual_pages, status=status_msg)
-            elif not di_extracted_pages and is_image:
-                print(f"Info: Azure DI processed image {chunk_effective_filename}, but extracted no text.")
-                update_callback(number_of_pages=conceptual_pages, status=f"Processed image {chunk_effective_filename} (no text found).")
-            else:
-                 update_callback(number_of_pages=conceptual_pages, status=f"Received {num_di_pages} content page(s)/slide(s) from Azure DI for {chunk_effective_filename}.")
-
-        except Exception as e:
-            raise Exception(f"Error extracting content from {chunk_effective_filename} with Azure DI: {str(e)}")
-
-        # Content Chunking Strategy (Word needs specific handling)
-        final_chunks_to_save = []
-        if is_word:
-            update_callback(status=f"Chunking Word content from {chunk_effective_filename}...")
-            try:
-                final_chunks_to_save = chunk_word_file_into_pages(di_pages=di_extracted_pages)
-                num_final_chunks = len(final_chunks_to_save)
-                # Update number_of_pages again for Word to reflect final chunk count
-                update_callback(number_of_pages=num_final_chunks, status=f"Created {num_final_chunks} content chunks for {chunk_effective_filename}.")
-            except Exception as e:
-                 raise Exception(f"Error chunking Word content for {chunk_effective_filename}: {str(e)}")
-        elif is_pdf or is_ppt:
-            final_chunks_to_save = di_extracted_pages # Use DI pages/slides directly
-        elif is_image:
-            if di_extracted_pages:
-                 if 'page_number' not in di_extracted_pages[0]: di_extracted_pages[0]['page_number'] = 1
-                 final_chunks_to_save = di_extracted_pages
-            else: final_chunks_to_save = [] # No text extracted
-
-        # Save Final Chunks to Search Index
-        num_final_chunks = len(final_chunks_to_save)
-        if not final_chunks_to_save:
-            print(f"Info: No final content chunks to save for {chunk_effective_filename}.")
-        else:
-            update_callback(status=f"Saving {num_final_chunks} content chunk(s) for {chunk_effective_filename}...")
-            args = {
-                "document_id": document_id,
-                "user_id": user_id
-            }
-
-            if is_group:
-                args["group_id"] = group_id
-
-            doc_metadata_temp = get_document_metadata(**args)
-
-            estimated_total_items = doc_metadata_temp.get('number_of_pages', num_final_chunks) if doc_metadata_temp else num_final_chunks
-
-            try:
-                for i, chunk_data in enumerate(final_chunks_to_save):
-                    chunk_index = chunk_data.get("page_number", i + 1) # Ensure page number exists
-                    chunk_content = chunk_data.get("content", "")
-
-                    if not chunk_content.strip():
-                        print(f"Skipping empty chunk index {chunk_index} for {chunk_effective_filename}.")
-                        continue
-
-                    update_callback(
-                        current_file_chunk=int(chunk_index),
-                        number_of_pages=estimated_total_items,
-                        status=f"Saving page/chunk {chunk_index}/{estimated_total_items} of {chunk_effective_filename}..."
-                    )
-                    
-                    args = {
-                        "page_text_content": chunk_content,
-                        "page_number": chunk_index,
-                        "file_name": chunk_effective_filename,
-                        "user_id": user_id,
-                        "document_id": document_id
-                    }
-
-                    if is_group:
-                        args["group_id"] = group_id
-
-                    save_chunks(**args)
-
-                    total_final_chunks_processed += 1
-                print(f"Saved {num_final_chunks} content chunk(s) from {chunk_effective_filename}.")
-            except Exception as e:
-                raise Exception(f"Error saving extracted content chunk index {chunk_index} for {chunk_effective_filename}: {repr(e)}\nTraceback:\n{traceback.format_exc()}")
-
-        # Clean up local file chunk (if it's not the original temp file)
-        if chunk_path != temp_file_path and os.path.exists(chunk_path):
-            try:
-                os.remove(chunk_path)
-                print(f"Cleaned up temporary chunk file: {chunk_path}")
-            except Exception as cleanup_e:
-                print(f"Warning: Failed to clean up temp chunk file {chunk_path}: {cleanup_e}")
-
-    # --- Final Metadata Extraction (Optional, moved outside loop) ---
-    settings = get_settings() # Re-get in case it changed? Or pass it down.
-    enable_extract_meta_data = settings.get('enable_extract_meta_data')
-    if enable_extract_meta_data and total_final_chunks_processed > 0:
-        try:
-            update_callback(status="Extracting final metadata...")
-            args = {
-                "document_id": document_id,
-                "user_id": user_id
-            }
-
-            if is_group:
-                args["group_id"] = group_id
-
-            document_metadata = extract_document_metadata(**args)
-
-            update_fields = {k: v for k, v in document_metadata.items() if v is not None and v != ""}
-            if update_fields:
-                 update_fields['status'] = "Final metadata extracted"
-                 update_callback(**update_fields)
-            else:
-                 update_callback(status="Final metadata extraction yielded no new info")
-        except Exception as e:
-            print(f"Warning: Error extracting final metadata for {document_id}: {str(e)}")
-            # Don't fail the whole process, just update status
-            update_callback(status=f"Processing complete (metadata extraction warning)")
-
-    return total_final_chunks_processed
-
-# --- Audio transcription support ---
-def _get_content_type(path: str) -> str:
-    ext = os.path.splitext(path)[1].lower()
-    mapping = {
-        '.wav': 'audio/wav',
-        '.mp3': 'audio/mpeg',
-        '.m4a': 'audio/mp4',
-        '.mp4': 'audio/mp4'
-    }
-    return mapping.get(ext, 'application/octet-stream')
-
-
-def _split_audio_file(input_path: str, chunk_seconds: int = 540) -> List[str]:
-    """
-    Splits `input_path` into WAV segments of length `chunk_seconds` seconds,
-    writing files like input_chunk_000.wav.
-    Returns the list of generated WAV chunk file paths.
-    Each chunk is re-encoded to PCM WAV (16kHz) for compatibility.
-    """
-    base, _ = os.path.splitext(input_path)
-    pattern = f"{base}_chunk_%03d.wav"
-
-    try:
-        (
-            ffmpeg_py
-            .input(input_path)
-            .output(
-                pattern,
-                acodec='pcm_s16le',
-                ar='16000',
-                f='segment',
-                segment_time=chunk_seconds,
-                reset_timestamps=1,
-                map='0'
-            )
-            .run(quiet=True, overwrite_output=True)
-        )
-    except Exception as e:
-        print(f"[Error] FFmpeg segmentation to WAV failed for '{input_path}': {e}")
-        raise RuntimeError(f"Segmentation failed: {e}")
-
-    chunks = sorted(glob.glob(f"{base}_chunk_*.wav"))
-    if not chunks:
-        print(f"[Error] No WAV chunks produced for '{input_path}'.")
-        raise RuntimeError(f"No chunks produced by ffmpeg for file '{input_path}'")
-    print(f"[Debug] Produced {len(chunks)} WAV chunks: {chunks}")
-    return chunks
-
-
-def process_audio_document(
+# === NEW: Orchestration for queued uploads (used by routes) ===
+def process_document_upload_background(
     document_id: str,
     user_id: str,
     temp_file_path: str,
     original_filename: str,
-    update_callback,
-    group_id=None
-) -> int:
-    """Transcribe an audio file via Azure Speech, splitting >10 min into WAV chunks."""
-
-    settings = get_settings()
-    if settings.get("enable_enhanced_citations", False):
-        update_callback(status="Uploading audio for enhanced citations…")
-        blob_path = upload_to_blob(
-            temp_file_path,
-            user_id,
-            document_id,
-            original_filename,
-            update_callback,
-            group_id
-        )
-        update_callback(status=f"Enhanced citations: audio at {blob_path}")
-
-
-    # 1) size guard
-    file_size = os.path.getsize(temp_file_path)
-    print(f"[Debug] File size: {file_size} bytes")
-    if file_size > 300 * 1024 * 1024:
-        raise ValueError("Audio exceeds 300 MB limit.")
-
-    # 2) split to WAV chunks
-    update_callback(status="Preparing audio for transcription…")
-    chunk_paths = _split_audio_file(temp_file_path, chunk_seconds=540)
-
-    # 3) transcribe each WAV chunk
-    settings = get_settings()
-    endpoint = settings.get("speech_service_endpoint", "").rstrip('/')
-    key = settings.get("speech_service_key", "")
-    locale = settings.get("speech_service_locale", "en-US")
-    url = f"{endpoint}/speechtotext/transcriptions:transcribe?api-version=2024-11-15"
-
-    all_phrases: List[str] = []
-    for idx, chunk_path in enumerate(chunk_paths, start=1):
-        update_callback(current_file_chunk=idx, status=f"Transcribing chunk {idx}/{len(chunk_paths)}…")
-        print(f"[Debug] Transcribing WAV chunk: {chunk_path}")
-
-        with open(chunk_path, 'rb') as audio_f:
-            files = {
-                'audio': (os.path.basename(chunk_path), audio_f, 'audio/wav'),
-                'definition': (None, json.dumps({'locales':[locale]}), 'application/json')
-            }
-            headers = {'Ocp-Apim-Subscription-Key': key}
-            resp = requests.post(url, headers=headers, files=files)
-        try:
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"[Error] HTTP error for {chunk_path}: {e}")
-            raise
-
-        result = resp.json()
-        phrases = result.get('combinedPhrases', [])
-        print(f"[Debug] Received {len(phrases)} phrases")
-        all_phrases += [p.get('text','').strip() for p in phrases if p.get('text')]
-
-    # 4) cleanup WAV chunks
-    for p in chunk_paths:
-        try:
-            os.remove(p)
-            print(f"[Debug] Removed chunk: {p}")
-        except Exception as e:
-            print(f"[Warning] Could not remove chunk {p}: {e}")
-
-    # 5) stitch and save transcript chunks
-    full_text = ' '.join(all_phrases).strip()
-    words = full_text.split()
-    chunk_size = 400
-    total_pages = max(1, math.ceil(len(words) / chunk_size))
-    print(f"[Debug] Creating {total_pages} transcript pages")
-
-    for i in range(total_pages):
-        page_text = ' '.join(words[i*chunk_size:(i+1)*chunk_size])
-        update_callback(current_file_chunk=i+1, status=f"Saving transcript chunk {i+1}/{total_pages}…")
-        save_chunks(
-            page_text_content=page_text,
-            page_number=i+1,
-            file_name=original_filename,
-            user_id=user_id,
-            document_id=document_id,
-            group_id=group_id
-        )
-
-    update_callback(number_of_pages=total_pages, status="Audio transcription complete", percentage_complete=100, current_file_chunk=None)
-    print("[Info] Audio transcription complete")
-    return total_pages
-
-
-
-def process_document_upload_background(document_id, user_id, temp_file_path, original_filename, group_id=None):
+    group_id: Optional[str] = None,
+):
     """
-    Main background task dispatcher for document processing.
-    Handles various file types with specific chunking and processing logic.
-    Integrates enhanced citations (blob upload) for all supported types.
+    Orchestrates a single uploaded file:
+      - Detect type
+      - (Optional) upload original (enhanced citations)
+      - Extract text (Azure DI for PDF/DOC/DOCX)
+      - Chunk & save to Azure Cognitive Search
+      - Update Cosmos document status/percentage along the way
     """
     is_group = group_id is not None
+    file_ext = (os.path.splitext(original_filename)[1] or "").lower()
     settings = get_settings()
-    enable_enhanced_citations = settings.get('enable_enhanced_citations', False) # Default to False if missing
-    enable_extract_meta_data = settings.get('enable_extract_meta_data', False) # Used by DI flow
-    max_file_size_bytes = settings.get('max_file_size_mb', 16) * 1024 * 1024
+    enable_enhanced_citations = settings.get("enable_enhanced_citations", False)
 
-    video_extensions = ('.mp4', '.mov', '.avi', '.mkv', '.flv')
-    audio_extensions = ('.mp3', '.wav', '.ogg', '.aac', '.flac', '.m4a')
-
-    # --- Define update_document callback wrapper ---
-    # This makes it easier to pass the update function to helpers without repeating args
-    def update_doc_callback(**kwargs):
-        args = {
-            "document_id": document_id,
-            "user_id": user_id,
-            **kwargs  # includes any dynamic update fields
-        }
-
+    def update_callback(**kwargs):
+        args = {"document_id": document_id, "user_id": user_id}
         if is_group:
             args["group_id"] = group_id
-
+        args.update(kwargs)
         update_document(**args)
 
-
-    total_chunks_saved = 0
-    file_ext = '' # Initialize
-
     try:
-        # --- 0. Initial Setup & Validation ---
-        if not temp_file_path or not os.path.exists(temp_file_path):
-             raise FileNotFoundError(f"Temporary file path not found or invalid: {temp_file_path}")
+        update_callback(status=f"Receiving {original_filename}…", percentage_complete=0)
 
-        file_ext = os.path.splitext(original_filename)[-1].lower()
-        if not file_ext:
-            raise ValueError("Could not determine file extension from original filename.")
+        # 1) Optionally upload original
+        if enable_enhanced_citations:
+            try:
+                upload_to_blob(
+                    temp_file_path=temp_file_path,
+                    user_id=user_id,
+                    document_id=document_id,
+                    blob_filename=original_filename,
+                    update_callback=update_callback,
+                    group_id=group_id,
+                )
+            except Exception as e:
+                update_callback(status=f"Warning: original upload failed → {e}")
 
-        if not allowed_file(original_filename): # Assuming allowed_file checks the extension
-             raise ValueError(f"File type {file_ext} is not allowed.")
+        total_chunks_saved = 0
 
-        file_size = os.path.getsize(temp_file_path)
-        if file_size > max_file_size_bytes:
-            raise ValueError(f"File exceeds maximum allowed size ({max_file_size_bytes / (1024*1024):.1f} MB).")
-
-        update_doc_callback(status=f"Processing file {original_filename}, type: {file_ext}")
-
-        # --- 1. Dispatch to appropriate handler based on file type ---
-        di_supported_extensions = ('.pdf', '.docx', '.doc', '.pptx', '.ppt', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif')
-        tabular_extensions = ('.csv', '.xlsx', '.xls')
-
-        is_group = group_id is not None
-
-        args = {
-            "document_id": document_id,
-            "user_id": user_id,
-            "temp_file_path": temp_file_path,
-            "original_filename": original_filename,
-            "file_ext": file_ext if file_ext in tabular_extensions or file_ext in di_supported_extensions else None,
-            "enable_enhanced_citations": enable_enhanced_citations,
-            "update_callback": update_doc_callback
-        }
-
-        if is_group:
-            args["group_id"] = group_id
-
-        if file_ext == '.txt':
-            total_chunks_saved = process_txt(**{k: v for k, v in args.items() if k != "file_ext"})
-        elif file_ext == '.html':
-            total_chunks_saved = process_html(**{k: v for k, v in args.items() if k != "file_ext"})
-        elif file_ext == '.md':
-            total_chunks_saved = process_md(**{k: v for k, v in args.items() if k != "file_ext"})
-        elif file_ext == '.json':
-            total_chunks_saved = process_json(**{k: v for k, v in args.items() if k != "file_ext"})
-        elif file_ext in tabular_extensions:
-            total_chunks_saved = process_tabular(**args)
-        elif file_ext in video_extensions:
+        # --- Video ---
+        if file_ext in {".mp4", ".mov", ".m4v", ".avi", ".wmv", ".mkv"}:
+            update_callback(status="VIDEO: starting indexing…", percentage_complete=1)
             total_chunks_saved = process_video_document(
                 document_id=document_id,
                 user_id=user_id,
                 temp_file_path=temp_file_path,
                 original_filename=original_filename,
-                update_callback=update_doc_callback,
-                group_id=group_id
+                update_callback=update_callback,
+                group_id=group_id,
             )
-        elif file_ext in audio_extensions:
-            total_chunks_saved = process_audio_document(
+
+        # --- Tabular ---
+        elif file_ext in {".csv", ".xlsx", ".xls"}:
+            total_chunks_saved = process_tabular(
                 document_id=document_id,
                 user_id=user_id,
                 temp_file_path=temp_file_path,
                 original_filename=original_filename,
-                update_callback=update_doc_callback,
-                group_id=group_id
+                update_callback=update_callback,
+                group_id=group_id,
             )
-        elif file_ext in di_supported_extensions:
-            total_chunks_saved = process_di_document(**args)
+
+        # --- JSON ---
+        elif file_ext == ".json":
+            total_chunks_saved = process_json(
+                document_id=document_id,
+                user_id=user_id,
+                temp_file_path=temp_file_path,
+                original_filename=original_filename,
+                enable_enhanced_citations=enable_enhanced_citations,
+                update_callback=update_callback,
+                group_id=group_id,
+            )
+
+        # --- HTML ---
+        elif file_ext in {".html", ".htm"}:
+            total_chunks_saved = process_html(
+                document_id=document_id,
+                user_id=user_id,
+                temp_file_path=temp_file_path,
+                original_filename=original_filename,
+                enable_enhanced_citations=enable_enhanced_citations,
+                update_callback=update_callback,
+                group_id=group_id,
+            )
+
+        # --- Markdown ---
+        elif file_ext in {".md", ".markdown"}:
+            total_chunks_saved = process_md(
+                document_id=document_id,
+                user_id=user_id,
+                temp_file_path=temp_file_path,
+                original_filename=original_filename,
+                enable_enhanced_citations=enable_enhanced_citations,
+                update_callback=update_callback,
+                group_id=group_id,
+            )
+
+        # --- Plain text ---
+        elif file_ext in {".txt", ".log"}:
+            total_chunks_saved = process_txt(
+                document_id=document_id,
+                user_id=user_id,
+                temp_file_path=temp_file_path,
+                original_filename=original_filename,
+                enable_enhanced_citations=enable_enhanced_citations,
+                update_callback=update_callback,
+                group_id=group_id,
+            )
+
+        # --- PDF / Word via Azure Document Intelligence ---
+        elif file_ext in {".pdf", ".docx", ".doc"}:
+            update_callback(status="Sending to Document Intelligence…", percentage_complete=5)
+
+            input_paths = [temp_file_path]
+            if file_ext == ".pdf":
+                page_count = get_pdf_page_count(temp_file_path) or 0
+                if page_count > 500:
+                    update_callback(status=f"Large PDF detected ({page_count} pages). Chunking…")
+                    input_paths = chunk_pdf(temp_file_path, max_pages=500)
+
+            total_pages = 0
+            saved_so_far = 0
+            for sub_ix, sub_path in enumerate(input_paths, start=1):
+                try:
+                    pages = extract_content_with_azure_di(sub_path)  # [{page_number, content}]
+                except Exception as e:
+                    update_callback(status=f"Azure DI failed on part {sub_ix}: {e}")
+                    continue
+
+                # Add metadata from file properties for the first sub-part
+                if sub_ix == 1:
+                    try:
+                        if file_ext == ".pdf":
+                            title, author, _, _ = extract_pdf_metadata(temp_file_path)
+                        else:
+                            title, author = extract_docx_metadata(temp_file_path)
+                        update_callback(title=title or None, authors=[author] if author else None)
+                    except Exception:
+                        pass
+
+                # Re-chunk Word pages to WORD_CHUNK_SIZE if needed
+                if file_ext in {".doc", ".docx"}:
+                    pages = chunk_word_file_into_pages(pages)
+
+                total_pages += len(pages)
+                update_callback(number_of_pages=total_pages, status="Saving pages…")
+
+                for p in pages:
+                    saved_so_far += 1
+                    update_callback(current_file_chunk=saved_so_far, status=f"Saving page {saved_so_far}/{total_pages}…")
+                    save_chunks(
+                        page_text_content=p.get("content", ""),
+                        page_number=saved_so_far,
+                        file_name=original_filename,
+                        user_id=user_id,
+                        document_id=document_id,
+                        group_id=group_id,
+                    )
+
+            total_chunks_saved = saved_so_far
+
         else:
-            raise ValueError(f"Unsupported file type for processing: {file_ext}")
+            update_callback(status=f"Unsupported file type: {file_ext}")
+            raise ValueError(f"Unsupported file type: {file_ext}")
 
-
-        # --- 2. Final Status Update ---
-        final_status = "Processing complete"
-        if total_chunks_saved == 0:
-             # Provide more specific status if no chunks were saved
-             if file_ext in ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif'):
-                 final_status = "Processing complete - no text found in image"
-             elif file_ext in tabular_extensions:
-                 final_status = "Processing complete - no data rows found or file empty"
-             else:
-                 final_status = "Processing complete - no content indexed"
-
-        # Final update uses the total chunks saved across all steps/sheets
-        # For DI types, number_of_pages might have been updated during DI processing,
-        # but let's ensure the final update reflects the *saved* chunk count accurately.
-        update_doc_callback(
-             number_of_pages=total_chunks_saved, # Final count of SAVED chunks
-             status=final_status,
-             percentage_complete=100,
-             current_file_chunk=None # Clear current chunk tracking
-         )
-
-        print(f"Document {document_id} ({original_filename}) processed successfully with {total_chunks_saved} chunks saved.")
+        update_callback(
+            num_chunks=total_chunks_saved,
+            current_file_chunk=total_chunks_saved,
+            number_of_pages=total_chunks_saved,
+            status="Processing complete",
+            percentage_complete=100,
+        )
 
     except Exception as e:
-        error_msg = f"Processing failed: {str(e)}"
-        print(f"Error processing {document_id} ({original_filename}): {error_msg}")
-        # Attempt to update status to Error
-        try:
-            update_doc_callback(
-                status=f"Error: {error_msg[:250]}", # Limit error message length
-                percentage_complete=0 # Indicate failure
-            )
-        except Exception as update_e:
-            print(f"Critical Error: Failed to update document status to error for {document_id}: {update_e}")
-
+        update_callback(status=f"Processing failed: {e}")
+        raise
     finally:
-        # --- 3. Cleanup ---
-        # Clean up the original temporary file path regardless of success or failure
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
+        try:
+            if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
-                print(f"Cleaned up original temporary file: {temp_file_path}")
-            except Exception as cleanup_e:
-                 print(f"Warning: Failed to clean up original temp file {temp_file_path}: {cleanup_e}")
+        except Exception:
+            pass
 
-def upgrade_legacy_documents(user_id, group_id=None):
+
+def upgrade_legacy_documents(user_id: str, group_id: Optional[str] = None) -> int:
     """
-    Finds all user or group docs missing percentage_complete
-    and backfills them with the new fields.
-    Returns the number of docs updated.
+    One-time upgrader: add percentage/status fields for old docs that predate progress tracking.
+    Returns the count of upgraded docs.
     """
     is_group = group_id is not None
+    container = cosmos_group_documents_container if is_group else cosmos_user_documents_container
 
-    # Choose the correct container and query parameters
-    cosmos_container = (
-        cosmos_group_documents_container if is_group
-        else cosmos_user_documents_container
+    query = (
+        "SELECT * FROM c WHERE c.group_id = @gid AND NOT IS_DEFINED(c.percentage_complete)"
+        if is_group else
+        "SELECT * FROM c WHERE c.user_id = @uid AND NOT IS_DEFINED(c.percentage_complete)"
     )
+    params = [{"name": "@gid", "value": group_id}] if is_group else [{"name": "@uid", "value": user_id}]
 
-    if is_group:
-        query = """
-            SELECT *
-            FROM c
-            WHERE c.group_id = @owner
-              AND NOT IS_DEFINED(c.percentage_complete)
-        """
-        parameters = [
-            {"name": "@owner", "value": group_id}
-        ]
-    else:
-        query = """
-            SELECT *
-            FROM c
-            WHERE c.user_id = @owner
-              AND NOT IS_DEFINED(c.percentage_complete)
-        """
-        parameters = [
-            {"name": "@owner", "value": user_id}
-        ]
-
-    # Fetch all legacy docs
-    legacy_docs = list(
-        cosmos_container.query_items(
-            query=query,
-            parameters=parameters,
-            enable_cross_partition_query=True
-        )
-    )
-
-    for doc in legacy_docs:
-        # Build the patch arguments
-        # Always include document_id first
-        if is_group:
-            # Group document
-            update_document(
-                document_id=doc["id"],
-                group_id=group_id,
-                user_id=user_id,
-                status="Processing complete",
-                percentage_complete=100,
-                num_chunks=doc.get("number_of_pages", doc.get("num_chunks", 1)),
-                number_of_pages=doc.get("number_of_pages", doc.get("num_chunks", 1)),
-                current_file_chunk=doc.get("num_chunks", 1),
-                num_file_chunks=1,
-                enhanced_citations=False,
-                document_classification="Pending",
-                title="",
-                authors=[],
-                organization="",
-                publication_date="",
-                keywords=[],
-                abstract=""
-            )
-        else:
-            # Personal document
-            update_document(
-                document_id=doc["id"],
-                user_id=user_id,
-                status="Processing complete",
-                percentage_complete=100,
-                num_chunks=doc.get("number_of_pages", doc.get("num_chunks", 1)),
-                number_of_pages=doc.get("number_of_pages", doc.get("num_chunks", 1)),
-                current_file_chunk=doc.get("num_chunks", 1),
-                num_file_chunks=1,
-                enhanced_citations=False,
-                document_classification="Pending",
-                title="",
-                authors=[],
-                organization="",
-                publication_date="",
-                keywords=[],
-                abstract=""
-            )
-
-    return len(legacy_docs)
+    upgraded = 0
+    try:
+        items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+        for d in items:
+            # set baseline tracking fields if missing
+            if not d.get("status"):
+                d["status"] = "Processing complete" if d.get("num_chunks", 0) > 0 else "Queued"
+            d["percentage_complete"] = 100 if str(d.get("status", "")).lower().startswith("processing complete") else d.get("percentage_complete", 0)
+            d["last_updated"] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            container.upsert_item(d)
+            upgraded += 1
+        return upgraded
+    except Exception:
+        return upgraded
