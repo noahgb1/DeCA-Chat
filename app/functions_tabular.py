@@ -17,7 +17,8 @@ _ANALYTIC_PATTERNS = [
     r"\bdistribution\b", r"\bcorrelat(e|ion)\b", r"\bcompare\b",
     r"\bmean\b", r"\bmedian\b", r"\baverage\b", r"\bmin(imum)?\b", r"\bmax(imum)?\b",
     r"\bcount(s)?\b", r"\bsum(s|mary)?\b", r"\bbreak ?down\b", r"\boverview\b",
-    r"\bdescrib(e|e\s+the)\b", r"\bexplor(e|ation|atory)\b"
+    r"\bdescrib(e|e\s+the)\b", r"\bexplor(e|ation|atory)\b",
+    r"\bvariance\b", r"\bvar\b", r"\bstandard deviation\b", r"\bstd\b", r"\bstdev\b"
 ]
 
 # Narrower hints that specifically justify computing time trends
@@ -80,14 +81,14 @@ def _lazy_imports():
 
 # Increased budgets so small (e.g., 14x50) sheets never time out spuriously
 BASE_TIME_BUDGET_MS = 1200
-BOOSTED_TIME_BUDGET_MS = 2400
+BOOSTED_TIME_BUDGET_MS = 2600
 
 ANALYTIC_HINTS = (
     "count","counts","total","sum","average","avg","median","mean","min","max",
     "group","by","top","trend","distribution","percent","percentage","rate",
     "histogram","boxplot","chart","graph","plot","describe","profile","analyze",
     "analysis","insight","eda","explore","exploration","breakdown","overview",
-    "summary","summarize"
+    "summary","summarize","variance","var","standard deviation","std","stdev","time series","monthly"
 )
 
 def _scaled_time_budget(prompt: str) -> int:
@@ -100,6 +101,7 @@ def _scaled_time_budget(prompt: str) -> int:
 
 # ---------- Blob helpers ----------
 def _blob_clients():
+    # Prefer connection string; if needed, this can be extended to use configured CLIENTS like other modules
     try:
         from azure.storage.blob import BlobServiceClient
         conn = (os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
@@ -161,7 +163,7 @@ def _download_blob_to_temp(container_name: Optional[str], blob_name: str) -> Opt
         finally:
             tmp.close()
         return tmp_path
-    except Exception as e:
+    except Exception:
         try:
             # best-effort cleanup if partially created
             if 'tmp_path' in locals() and os.path.exists(tmp_path):
@@ -370,7 +372,7 @@ def _duckdb_basic_aggregates(duckdb, parquet_path: str, compute_trend: bool, max
     return out
 
 # ---------- NEW: deterministic aggregate entry point ----------
-# (expanded with value listing, unique listing, and distinct counts; fixed lazy import unpack)
+# (expanded with value listing, unique listing, distinct counts; fixed lazy import unpack; added stddev/variance and monthly trends)
 _OPS = {
     "mean": ["mean", "average", "avg"],
     "sum": ["sum", "total"],
@@ -378,6 +380,8 @@ _OPS = {
     "min": ["min", "minimum", "smallest", "lowest"],
     "max": ["max", "maximum", "largest", "highest"],
     "median": ["median"],
+    "stddev": ["std", "stdev", "standard deviation", "stddev"],
+    "variance": ["variance", "var"],
     "list_values": ["list values", "values", "show values"],
     "unique_values": ["unique values", "distinct values", "unique", "distinct"],
     "count_distinct": ["count distinct", "distinct count", "unique count"],
@@ -488,12 +492,13 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
     """
     Deterministic aggregate path used by /chat/stream.
     Supports:
-      - Basic ops: mean/average, sum, min, max, median, count rows
+      - Basic ops: mean/average, sum, min, max, median, count rows, stddev, variance
       - Grouping: "group by <col>" or "by <col>"
       - Sheet hint: sheet=<name> (exact or fuzzy)
       - Listing ops: list values, unique values, count distinct
       - EXACT column dump op: returns full column values in stable row order with pagination
       - Ordering flags: "ascending"/"descending"/"sorted", or "order by <col> asc|desc"
+      - Time-series: if the question suggests trends, compute monthly counts over a detected date column (or date=<col> hint)
     Returns: {"text": str, "audit": {...}, "structured": {...}, "citations": []}
     """
     import statistics as stats
@@ -505,11 +510,16 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
 
     temp_paths: List[str] = []
     try:
-        # Parse sheet=<name> and group by hints
+        # Parse sheet=<name>, date=<name>, and group by hints
         sheet_hint = None
         m_sheet = re.search(r"sheet\s*=\s*([\"']?)([^\"'\n\r]+)\1", prompt, flags=re.I)
         if m_sheet:
             sheet_hint = m_sheet.group(2).strip()
+
+        date_hint = None
+        m_date = re.search(r"\bdate\s*=\s*([\"']?)([^\"'\n\r]+)\1", prompt, flags=re.I)
+        if m_date:
+            date_hint = m_date.group(2).strip()
 
         group_col_hint = None
         m_grp = re.search(r"\bgroup\s+by\s+([A-Za-z0-9 _\-./]+)", prompt, flags=re.I)
@@ -597,6 +607,95 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
 
         # Detect operation and measure column
         op, measure_col = _detect_op_and_column(prompt or "", columns)
+
+        # ---------- NEW: Trends (monthly) branch ----------
+        if wants_trend(prompt) or (op is None and date_hint):
+            if pd is None:
+                return {"text": "Time-series requires pandas.", "audit": {}, "structured": {}, "citations": []}
+            # Find a candidate date column
+            candidate_date = None
+            if date_hint:
+                # resolve fuzzily against discovered columns
+                nt = _normalize(date_hint)
+                for c in columns:
+                    if _normalize(c) == nt or nt in _normalize(c) or _normalize(c) in nt:
+                        candidate_date = c
+                        break
+
+            # Scan sheets to confirm/auto-detect if needed
+            monthly_counts: Dict[str, int] = {}
+            checked = False
+            for s in sheets:
+                if (time.time() - start) * 1000.0 > budget:
+                    break
+                lp = _download_blob_to_temp(container_for_data, s["parquet_blob_path"])
+                if lp:
+                    temp_paths.append(lp)
+                if not lp or not os.path.exists(lp):
+                    continue
+                try:
+                    df = pd.read_parquet(lp)
+                except Exception:
+                    continue
+
+                # pick/verify candidate_date per sheet
+                date_col = candidate_date
+                if date_col is None:
+                    # auto-detect on this sheet
+                    best_col = None; best_ratio = 0.0
+                    for c in df.columns:
+                        s_col = df[c].dropna()
+                        if s_col.empty:
+                            continue
+                        sample = s_col.head(500)
+                        dt = pd.to_datetime(sample, errors="coerce", infer_datetime_format=True)
+                        valid = int(dt.notna().sum())
+                        ratio = float(valid) / float(len(sample)) if len(sample) else 0.0
+                        if valid >= 10 and ratio > best_ratio and ratio >= 0.3:
+                            best_ratio = ratio; best_col = c
+                    date_col = best_col
+
+                if date_col and date_col in df.columns:
+                    dt_all = pd.to_datetime(df[date_col], errors="coerce", infer_datetime_format=True)
+                    periods = dt_all.dropna().dt.to_period("M").astype(str)
+                    vc = periods.value_counts()
+                    for period, cnt in vc.items():
+                        monthly_counts[period] = monthly_counts.get(period, 0) + int(cnt)
+                    checked = True
+
+            if checked and monthly_counts:
+                # sort by period ascending
+                series = [{"period": k, "count": monthly_counts[k]} for k in sorted(monthly_counts.keys())][:24]
+                head_lines = [f"Monthly counts{(f' using {candidate_date}' if candidate_date else '')}{(f' on sheet {sheet_hint}' if sheet_hint else '')}:"]
+                for r in series[:15]:
+                    head_lines.append(f"- {r['period']}: {r['count']}")
+                if len(series) > 15:
+                    head_lines.append(f"- … {len(series)-15} more months")
+                audit = {
+                    "rows_used": None,
+                    "columns_used": [candidate_date] if candidate_date else [],
+                    "sheets_used": [s.get("sheet_name","?") for s in sheets],
+                    "parquet_count": len(sheets),
+                    "operation": "monthly_trend",
+                    "operands_count": None,
+                    "filters": {"sheet": sheet_hint} if sheet_hint else None,
+                    "group_by": None,
+                    "groups_count": 0,
+                    "checksum": _checksum([s.get("parquet_blob_path","") for s in sheets] + ([candidate_date] if candidate_date else []))
+                }
+                return {
+                    "text": "\n".join(head_lines),
+                    "audit": audit,
+                    "structured": {"trend_monthly": series, "date_column": candidate_date},
+                    "citations": []
+                }
+            # If we couldn't detect any, fall through to normal guidance
+            # and let user specify exact date column
+            if not candidate_date:
+                return {
+                    "text": "I couldn't detect a date column to compute a monthly trend. Specify one with date=ColumnName.",
+                    "audit": {}, "structured": {}, "citations": []
+                }
 
         # ---------- NEW: Strict EXACT column dump with stable order + pagination ----------
         if op == "exact_column":
@@ -937,6 +1036,12 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
                 elif op == "median":
                     agg = float(stats.median(vals))
                     results.append({"group": key, "n": len(vals), "median": agg})
+                elif op == "stddev":
+                    agg = float(stats.stdev(vals)) if len(vals) >= 2 else 0.0
+                    results.append({"group": key, "n": len(vals), "stddev": agg})
+                elif op == "variance":
+                    agg = float(stats.variance(vals)) if len(vals) >= 2 else 0.0
+                    results.append({"group": key, "n": len(vals), "variance": agg})
                 else:
                     agg = float(sum(vals) / len(vals))
                     results.append({"group": key, "n": len(vals), "mean": agg})
@@ -951,8 +1056,9 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
                 head += f" on sheet '{sheet_hint}'"
             lines = [head + ":"]
             for r in results[:15]:
-                metric = next((k for k in ("mean","sum","min","max","median") if k in r), "mean")
-                lines.append(f"- {r['group']}: {r[metric]:,.2f} (n={r['n']})")
+                metric = next((k for k in ("mean","sum","min","max","median","stddev","variance") if k in r), "mean")
+                val_fmt = f"{r[metric]:,.2f}" if isinstance(r[metric], (int, float)) else str(r[metric])
+                lines.append(f"- {r['group']}: {val_fmt} (n={r['n']})")
             if len(results) > 15:
                 lines.append(f"- … {len(results)-15} more groups")
 
@@ -992,9 +1098,14 @@ def analyze_or_aggregate(prompt: str, req_json: dict, chunks: Optional[List[dict
             val = float(max(all_vals))
             return {"text": f"Maximum of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"max": val}, "citations": []}
         elif op == "median":
-            import statistics as stats  # local import for safety
             val = float(stats.median(all_vals))
             return {"text": f"Median of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"median": val}, "citations": []}
+        elif op == "stddev":
+            val = float(stats.stdev(all_vals)) if len(all_vals) >= 2 else 0.0
+            return {"text": f"Standard deviation of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"stddev": val, "n": len(all_vals)}, "citations": []}
+        elif op == "variance":
+            val = float(stats.variance(all_vals)) if len(all_vals) >= 2 else 0.0
+            return {"text": f"Variance of **{measure_col}**: **{val:,.2f}**.", "audit": audit, "structured": {"variance": val, "n": len(all_vals)}, "citations": []}
         else:
             val = float(sum(all_vals) / len(all_vals))
             return {

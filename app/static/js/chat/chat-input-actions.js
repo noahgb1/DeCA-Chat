@@ -72,6 +72,11 @@ export function uploadFileToConversation(file) {
       });
     })
     .then((data) => {
+      // NEW: Cache selected_document_id from server (if this was a tabular upload)
+      if (data && data.selected_document_id) {
+        window.lastUploadedTabularDocId = data.selected_document_id;
+      }
+
       if (data.conversation_id) {
         currentConversationId = data.conversation_id;
         loadMessages(currentConversationId);

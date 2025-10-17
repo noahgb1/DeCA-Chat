@@ -357,7 +357,7 @@ export function appendMessage(
         : "Image";
       avatarImg = "/static/images/ai-avatar.png";
       avatarAltText = "Generated Image";
-      messageContentHtml = `<img src="${messageContent}" alt="Generated Image" class="generated-image" style="width: 170px; height: 170px; cursor: pointer;" data-image-src="${messageContent}" onload="scrollChatToBottom()" />`;
+      messageContentHtml = `<img src="${messageContent}" alt="Generated Image" class="generated-image" style="width: 170px; height: 170px; cursor: pointer;" data-image-src="${messageContent}" onload="this.style.opacity=1" />`;
     } else if (sender === "safety") {
       messageClass = "safety-message";
       senderLabel = "Content Safety";
@@ -481,6 +481,12 @@ export function actuallySendMessage(finalMessageToSend) {
       selectedDocOption && selectedDocOption.value !== ""
         ? selectedDocOption.value
         : null;
+  }
+
+  // NEW: Fallback to the most recent uploaded tabular doc if no picker selection
+  if (!selectedDocumentId && window.lastUploadedTabularDocId) {
+    selectedDocumentId = window.lastUploadedTabularDocId;
+    console.debug("[chat] Using lastUploadedTabularDocId as selected_document_id:", selectedDocumentId);
   }
 
   if (classificationInput) {
@@ -681,6 +687,12 @@ async function actuallySendMessageStream(finalMessageToSend) {
       selectedDocOption && selectedDocOption.value !== ""
         ? selectedDocOption.value
         : null;
+  }
+
+  // NEW: Fallback to the most recent uploaded tabular doc if no picker selection
+  if (!selectedDocumentId && window.lastUploadedTabularDocId) {
+    selectedDocumentId = window.lastUploadedTabularDocId;
+    console.debug("[chat-stream] Using lastUploadedTabularDocId as selected_document_id:", selectedDocumentId);
   }
 
   if (classificationInput) {

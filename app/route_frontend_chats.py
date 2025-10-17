@@ -5,6 +5,7 @@ from functions_authentication import *
 from functions_content import *
 from functions_settings import *
 from functions_documents import *
+from functions_tabular_ingest import ingest_tabular_upload  # NEW: chat-upload tabular ingestion
 
 def register_route_frontend_chats(app):
     @app.route('/chats', methods=['GET'])
@@ -96,8 +97,33 @@ def register_route_frontend_chats(app):
 
         extracted_content  = ''
         is_table = False 
+        selected_document_id = None  # NEW: return to client for deterministic analytics
+
+        # Resolve active group for ingestion scope
+        try:
+            user_settings = get_user_settings(user_id)
+            active_group_id = user_settings["settings"].get("activeGroupOid", "") or None
+        except Exception:
+            active_group_id = None
 
         try:
+            # Ingest chat-uploaded spreadsheets to Parquet + manifest FIRST so we can return document_id
+            if file_ext in ['.csv', '.xls', '.xlsx']:
+                try:
+                    doc_id, manifest = ingest_tabular_upload(
+                        temp_file_path=temp_file_path,
+                        original_filename=filename,
+                        user_id=user_id,
+                        group_id=active_group_id,
+                        update_callback=lambda **kw: None
+                    )
+                    if doc_id:
+                        selected_document_id = doc_id
+                except Exception as ie:
+                    # Do not fail upload if ingestion fails; still allow preview below.
+                    selected_document_id = None
+
+            # Then extract preview for display in chat
             if file_ext in ['.pdf', '.docx', '.pptx', '.html', '.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.heif']:
                 extracted_content  = extract_content_with_azure_di(temp_file_path)
             elif file_ext == '.txt':
@@ -117,7 +143,10 @@ def register_route_frontend_chats(app):
         except Exception as e:
             return jsonify({'error': f'Error processing file: {str(e)}'}), 500
         finally:
-            os.remove(temp_file_path)
+            try:
+                os.remove(temp_file_path)
+            except Exception:
+                pass
 
         try:
             file_message_id = f"{conversation_id}_file_{int(time.time())}_{random.randint(1000,9999)}"
@@ -131,6 +160,9 @@ def register_route_frontend_chats(app):
                 'timestamp': datetime.utcnow().isoformat(),
                 'model_deployment_name': None
             }
+            # NEW: Store selected_document_id so conversation state knows which doc to analyze
+            if selected_document_id:
+                file_message['selected_document_id'] = selected_document_id
 
             cosmos_messages_container.upsert_item(file_message)
 
@@ -142,9 +174,11 @@ def register_route_frontend_chats(app):
                 'error': f'Error adding file to conversation: {str(e)}'
             }), 500
 
+        # Return selected_document_id so the client can send it with subsequent /api/chat requests
         return jsonify({
             'message': 'File added to the conversation successfully',
-            'conversation_id': conversation_id
+            'conversation_id': conversation_id,
+            'selected_document_id': selected_document_id
         }), 200
     
     # THIS IS THE OLD ROUTE, KEEPING IT FOR REFERENCE, WILL DELETE LATER
