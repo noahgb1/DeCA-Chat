@@ -232,6 +232,11 @@
                 Chat
               </a>
             </li>
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'how_to' else '' }}" href="{{ url_for('how_to') }}">
+                How-To
+              </a>
+            </li>
             <!-- REMOVED Admin Dropdown from here -->
           {% endif %}
         </ul>
@@ -335,6 +340,11 @@
             </li>
   
           {% else %}
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'how_to' else '' }}" href="{{ url_for('how_to') }}">
+                How-To
+              </a>
+            </li>
             <li class="nav-item">
               <a class="nav-link" href="{{ url_for('login') }}">
                 Login

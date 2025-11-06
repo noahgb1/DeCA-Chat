@@ -1,26 +1,24 @@
 # route_backend_predict.py
-# Purpose: Lightweight endpoint that returns ONE "next word" suggestion for the chat input.
+# Purpose: finish-the-current-word suggestion for the chat input.
 # Works with Azure OpenAI in Azure Gov (.azure.us). Uses your existing env vars.
 #
-# Changes (kept minimal, no env var name changes):
-# - Added endpoint sanitation (strip & rstrip('/')) and one-time logging of the effective endpoint/version.
-# - Clearer error classification in logs (dns_resolution_failed / network_timeout / auth_or_firewall / unknown).
-# - No changes to your env var names or external API shape; failures still return {"suggestion": ""}.
+# Behavior:
+# - Accept BOTH {"prefix": "..."} and {"text": "..."}.
+# - If the user ended with whitespace -> return "" (nothing to finish).
+# - If the last token is very short -> return "" (too early to be useful).
+# - Ask the model to return ONLY the missing tail of that token (the suffix).
+# - Sanitize to a single, no-space, no-punctuation suffix.
+# - If the model tries to return the same fragment or an empty string -> "".
 
 import os
 import re
 from flask import Blueprint, request, jsonify, current_app
-
-# Requires: openai >= 1.0.0
-# pip install --upgrade openai
 from openai import AzureOpenAI
 
-bp_predict = Blueprint("predict", __name__)  # Register in app.py: app.register_blueprint(bp_predict)
+bp_predict = Blueprint("predict", __name__)
 
 
-# -------- Env helpers --------
 def _first_env(names, default=None):
-    """Return the first non-empty environment variable from a list of names."""
     for name in names:
         val = os.getenv(name)
         if val:
@@ -29,96 +27,146 @@ def _first_env(names, default=None):
 
 
 def _get_azure_client():
-    """
-    Build an AzureOpenAI client using your existing env variables.
-    Priorities:
-      Key:       AZURE_OPENAI_KEY (then AZURE_OPENAI_API_KEY)
-      Endpoint:  AZURE_OPENAI_ENDPOINT (then azure_openai_endpoint, then azure_openai_embedding_endpoint)
-      Version:   AZURE_OPENAI_API_VERSION (then azure_openai_api_version, then azure_openai_embedding_api_version)
-    """
     api_key = _first_env(["AZURE_OPENAI_KEY", "AZURE_OPENAI_API_KEY"])
-    endpoint = _first_env(["AZURE_OPENAI_ENDPOINT", "azure_openai_endpoint", "azure_openai_embedding_endpoint"])
+    endpoint = _first_env([
+        "AZURE_OPENAI_ENDPOINT",
+        "azure_openai_endpoint",
+        "azure_openai_embedding_endpoint",
+    ])
     api_version = _first_env(
         ["AZURE_OPENAI_API_VERSION", "azure_openai_api_version", "azure_openai_embedding_api_version"],
-        default="2024-06-01"
+        default="2024-06-01",
     )
 
     if endpoint:
-        endpoint = endpoint.strip().rstrip("/")  # guard against whitespace/trailing slash
+        endpoint = endpoint.strip().rstrip("/")
 
     if not api_key or not endpoint:
         raise RuntimeError("Missing Azure OpenAI credentials (key/endpoint).")
 
-    # Helpful one-time log for diagnostics
     try:
-        current_app.logger.info(f"AOAI endpoint in use: {endpoint}, api_version={api_version}")
+        current_app.logger.info(f"[predict] using endpoint={endpoint}, api_version={api_version}")
     except Exception:
         pass
 
-    return AzureOpenAI(api_key=api_key, api_version=api_version, azure_endpoint=endpoint)
+    return AzureOpenAI(
+        api_key=api_key,
+        api_version=api_version,
+        azure_endpoint=endpoint,
+    )
 
 
-# -------- Tiny cleaner for single-word suggestion --------
-_WORD_RE = re.compile(r"^[A-Za-z0-9_\-\u00C0-\u024F\u1E00-\u1EFF']+$")  # keep it readable; allow latin accents
+# simple "is this a reasonable word part?"
+_WORD_CHARS_RE = re.compile(r"[A-Za-z0-9_\-\u00C0-\u024F\u1E00-\u1EFF']+")
 
 
-def _sanitize_word(text: str) -> str:
-    """Return a clean single 'word-like' token from the LLM output, else empty string."""
-    if not text:
-        return ""
-    # Take first token-like chunk (split on whitespace and punctuation)
-    first = text.strip().split()[0]
-    # If it ends with punctuation, drop it
-    first = first.strip(".,;:!?—–…\"'()[]{}")
-    # Keep only word-like strings
-    return first if _WORD_RE.match(first) else ""
+def _extract_last_token(raw: str):
+    """
+    Return (head, fragment) where:
+      head     = everything before the current word fragment
+      fragment = the incomplete word at the end (no trailing space in raw)
+    Example:
+      "how am i suppo" -> ("how am i ", "suppo")
+      "document "      -> ("document ", "")
+    """
+    if not raw:
+        return "", ""
+    # raw here is the ORIGINAL (not rstrip'ed) so we can see if it ends with space
+    if raw.endswith((" ", "\t", "\n")):
+        # cursor is at word boundary -> nothing to finish
+        return raw, ""
+    # split on whitespace to get the last "word-like" chunk
+    parts = re.split(r"(\s+)", raw)
+    last = parts[-1]
+    head = "".join(parts[:-1])
+    return head, last
 
 
-# -------- Route --------
+def _sanitize_suffix(s: str):
+    """
+    Keep only the wordy part, no spaces/punct, short.
+    This is a suffix, so we don't split on whitespace here — we just strip it.
+    """
+    s = (s or "").strip()
+    # drop any whitespace in the middle (we only want a tail, not a new word)
+    s = re.sub(r"\s+", "", s)
+    # drop punctuation around
+    s = s.strip(".,;:!?—–…\"'()[]{}")
+    return s[:24]
+
+
 @bp_predict.route("/api/predict-next-word", methods=["POST"])
 def predict_next_word():
+    # feature flag (default on)
+    if not current_app.config.get("ENABLE_TYPING_PREDICTION", True):
+        return jsonify({"suggestion": ""}), 200
+
     try:
         payload = request.get_json(silent=True) or {}
-        text = (payload.get("text") or "").strip()
-        if not text:
+        original = (payload.get("prefix") or payload.get("text") or "")
+        # trim super-long input for safety
+        original = original[-500:]
+
+        # 1) figure out if there's actually a word to finish
+        head, fragment = _extract_last_token(original)
+
+        # if there's no fragment (user ended with space) -> nothing to finish
+        if not fragment:
+            return jsonify({"suggestion": ""}), 200
+
+        # if fragment is too short, don't bother
+        if len(fragment) < 2:
+            return jsonify({"suggestion": ""}), 200
+
+        # make sure fragment is word-ish
+        if not _WORD_CHARS_RE.fullmatch(fragment):
             return jsonify({"suggestion": ""}), 200
 
         client = _get_azure_client()
 
-        # Build a super-light prompt for next-token hinting
-        system_msg = {"role": "system", "content": "You predict the next single word only."}
-        user_msg = {"role": "user", "content": f"Continue the last word or suggest the next single word:\n\n{text}"}
+        # we tell the model explicitly: give me ONLY the missing tail AFTER this fragment
+        system_msg = {
+            "role": "system",
+            "content": (
+                "You are an autocomplete engine for a chat box. "
+                "The user has typed the beginning of ONE word. "
+                "You MUST respond with ONLY the remaining characters that would complete that SAME word. "
+                "Do NOT repeat the part the user already typed. "
+                "Do NOT add spaces. "
+                "Do NOT start a new word. "
+                "If you cannot complete it, reply with an empty string."
+            ),
+        }
+        user_msg = {
+            "role": "user",
+            "content": f"Complete this partial word by returning ONLY the remaining characters (the suffix): '{fragment}'",
+        }
 
-        # Use your configured deployment name
-        deployment = _first_env(["AZURE_OPENAI_DEPLOYMENT", "embedding_model"], default="gpt-4o")
+        deployment = _first_env(
+            ["AZURE_OPENAI_DEPLOYMENT", "DEFAULT_GPT_DEPLOYMENT", "azure_openai_deployment", "embedding_model"],
+            default="gpt-4o-mini",
+        )
 
-        # Keep a tiny budget; we only need one short token
         resp = client.chat.completions.create(
             model=deployment,
             messages=[system_msg, user_msg],
-            temperature=0.2,
-            max_tokens=2,
-            stop=[" ", "\n", ".", ",", ";", ":", "!", "?", "—", "–", "…", "\t"],
+            temperature=0.0,
+            max_tokens=4,
+            stop=[" ", "\n", ".", ","],  # Azure-safe (max 4)
         )
 
-        raw = (resp.choices[0].message.content or "").strip()
-        suggestion = _sanitize_word(raw)
-        return jsonify({"suggestion": suggestion}), 200
+        raw_suffix = (resp.choices[0].message.content or "")
+        suffix = _sanitize_suffix(raw_suffix)
+
+        # If the model echoed the fragment or returned nothing, give nothing
+        if not suffix:
+            return jsonify({"suggestion": ""}), 200
+
+        return jsonify({"suggestion": suffix}), 200
 
     except Exception as exc:
-        # Fail safe: log and return empty suggestion (no UI disruption)
         try:
-            msg = str(exc)
-            # Classify for quicker ops triage
-            if ("Name or service not known" in msg) or ("getaddrinfo" in msg) or ("NXDOMAIN" in msg):
-                hint = "dns_resolution_failed"
-            elif "timed out" in msg:
-                hint = "network_timeout"
-            elif ("403" in msg) or ("401" in msg):
-                hint = "auth_or_firewall"
-            else:
-                hint = "unknown"
-            current_app.logger.error(f"predict-next-word error ({hint}): {msg}")
+            current_app.logger.error(f"predict-next-word error: {exc}")
         except Exception:
             pass
         return jsonify({"suggestion": ""}), 200

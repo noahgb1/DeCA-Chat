@@ -35,9 +35,7 @@ from flask_session import Session
 from redis import Redis
 from functions_settings import get_settings
 
-# >>> ADDED: import the prediction blueprint
 from route_backend_predict import bp_predict
-# <<< ADDED
 
 from route_external_health import *
 
@@ -107,6 +105,14 @@ def format_datetime_filter(value):
 def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     return response
+
+@app.route("/how-to")
+def how_to():
+    return render_template("how_to.html")
+
+@app.route("/api/predict-next-word/ping", methods=["GET"])
+def predict_ping():
+    return jsonify({"ok": True, "enabled": app.config.get("ENABLE_TYPING_PREDICTION", None)}), 200
 
 # Register a custom Jinja filter for Markdown
 def markdown_filter(text):

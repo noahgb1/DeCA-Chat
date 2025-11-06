@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}How-To - {{ app_settings.app_title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5" id="top">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 mb-0">How-To</h1>
+    <a class="btn btn-sm btn-outline-secondary" href="#top">Back to top</a>
+  </div>
+
+  <!-- In-page navigation -->
+  <nav class="mb-3">
+    <a class="me-3" href="#overview">Overview</a>
+    <a class="me-3" href="#quickstart">Quick Start</a>
+    <a class="me-3" href="#workspaces">Workspaces</a>
+    <a class="me-3" href="#chat">Chat Basics</a>
+    <a class="me-3" href="#hitl">Human-in-the-Loop</a>
+    <a class="me-3" href="#uploads">Uploading Files</a>
+    <a class="me-3" href="#prompting">Prompt Engineering</a>
+    <a class="me-3" href="#explore">Explore & Learn</a>
+    <a class="me-3" href="#excel">Excel (WIP)</a>
+    <a class="me-3" href="#sharepoint">SharePoint & Training (WIP)</a>
+    <a class="me-3" href="#troubleshoot">Troubleshooting</a>
+  </nav>
+
+  <!-- Overview -->
+  <section id="overview" class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Overview</h2>
+        <p class="mb-2">
+          This application provides secure, context-aware AI assistance for the DeCA workforce. It supports both personal and group workspaces, citations to your sources, and user feedback. The system uses Retrieval-Augmented Generation (RAG) so answers can be grounded in the documents you provide.
+        </p>
+        <p class="mb-0">
+          Users may upload documents in <strong>Your Workspace</strong> (private) or <strong>Group Workspaces</strong> (shared). Uploads can include common document formats such as txt, pdf, docx, xlsx, xls, csv, pptx, html, jpg, jpeg, png, bmp, tiff, tif, heif, md, json.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <section id="quickstart" class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Quick Start (for users familiar with NIPR/AskSage-style tools)</h2>
+        <ol class="mb-3">
+          <li>Open <strong>Your Workspace</strong> or a <strong>Group Workspace</strong> aligned to your team’s mission.</li>
+          <li>Click <strong>Upload</strong> and add reference documents (policies, SOPs, memos). The system prefers text-based PDFs/Office files.</li>
+          <li>Go to <strong>Chat</strong>. Ask a question and review the <strong>citations</strong> under each answer before acting.</li>
+          <li>Iterate: clarify the task, provide constraints, and request a specific output format (e.g., bullet memo, email draft).</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Workspaces -->
+  <section id="workspaces" class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Your Workspace vs Group Workspaces</h2>
+        <ul class="mb-3">
+          <li><strong>Your Workspace</strong>: personal drafts and research; only you can see the uploads.</li>
+          <li><strong>Group Workspaces</strong>: shared sources and prompts for a team; promotes consistent answers and reduces rework.</li>
+          <li>Use descriptive filenames and logical workspace names to improve retrieval and citation clarity.</li>
+        </ul>
+        <div class="alert alert-info mb-0">
+          <strong>Data Handling:</strong> Respect the classification banner at the top of the site. Do not upload material beyond the authorized level.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chat Basics -->
+  <section id="chat" class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Chat Basics</h2>
+        <ul class="mb-0">
+          <li>When enabled answers are grounded on the <em>active workspace</em>. Switch workspaces to change context.</li>
+          <li>Click citation chips to view the underlying passage before using the content operationally.</li>
+          <li>When unsure, ask the model to <em>show reasoning steps at a high level</em> and to <em>list assumptions</em> it made from the sources.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Human-in-the-Loop -->
+  <section id="hitl" class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Human-in-the-Loop (HITL)</h2>
+        <p class="mb-2">
+          This tool assists; it does not replace judgement. For official outputs, validate citations and ensure the content meets policy, legal, and classification requirements.
+        </p>
+        <ul class="mb-3">
+          <li><strong>Review</strong> citations and compare to source passages.</li>
+          <li><strong>Revise</strong> prompts to correct tone, scope, and format (e.g., leadership memo vs. technical note).</li>
+          <li><strong>Record feedback</strong> using the built-in feedback controls; Admins can review and improve system behavior over time.</li>
+          <li><strong>Escalate</strong> edge cases to your supervisor or Admin when policy interpretation is required.</li>
+        </ul>
+        <div class="small text-muted">
+          Content safety workflows may review messages before they reach models or data sources.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Uploading Files -->
+  <section id="uploads" class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Uploading Files & Citations</h2>
+        <ul class="mb-3">
+          <li>Supported formats include txt, pdf, docx, xlsx, xls, csv, pptx, html, jpg, jpeg, png, bmp, tiff, tif, heif, md, json and markdown</li>
+          <li>Due to the nature of LLMs the system naturally prefers text-based Word Docs and PDFs with clear headings. Split very large documents into logical parts for better retrieval.</li>
+          <li>For ephemeral use, upload directly in Chat; items will not persist in the index (session use only).</li>
+        </ul>
+        <div class="alert alert-warning mb-0">
+          Upload only material authorized for the system’s classification and mission use. Remove drafts that are no longer required.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Prompt Engineering -->
+  <section id="prompting" class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Prompt Engineering (Practical)</h2>
+
+        <h3 class="h6">Here is a classic prompt engineering core pattern. This is a good way to begin a new conversation, if you already have a clear goal in mind.</h3>
+        <ol class="mb-3">
+          <li><strong>Role & Audience</strong>: “You are a staff analyst preparing content for SES leadership.”</li>
+          <li><strong>Objective</strong>: “Produce a one-page summary with three decision options.”</li>
+          <li><strong>Sources</strong>: “Cite only from the active workspace; if missing, state ‘source not found.’”</li>
+          <li><strong>Constraints</strong>: “Plain language; IL4-appropriate; no PII; bullet format; 250–300 words.”</li>
+          <li><strong>Output</strong>: “Return: (1) 5 bullets; (2) risk table: risk/likelihood/mitigation; (3) next steps.”</li>
+          <li><strong>HITL Step</strong>: “List assumptions and unresolved questions for human review.”</li>
+        </ol>
+
+        <h3 class="h6">Starter Templates</h3>
+        <div class="mb-3">
+          <p class="mb-1 fw-semibold">Leadership Summary</p>
+          <pre class="mb-3 p-3 bg-light border rounded small">
+Prepare a one-page summary for senior leadership on &lt;topic&gt;.
+Constraints: IL4 wording, no PII, bullet format, 250–300 words.
+Deliver: 5 bullets, a 3-row risk table (risk/likelihood/mitigation), and 3 immediate next steps.
+End with 3 assumptions and 2 questions for the human reviewer.
+          </pre>
+
+          <p class="mb-1 fw-semibold">Policy Comparison</p>
+          <pre class="mb-3 p-3 bg-light border rounded small">
+Compare Policy A vs. Policy B.
+Return a two-column table (A vs. B) with: scope, authority, key requirements, enforcement, citations.
+Call out conflicts and missing sections; flag items needing legal review.
+          </pre>
+
+          <p class="mb-1 fw-semibold">Draft Memo/Email</p>
+          <pre class="mb-0 p-3 bg-light border rounded small">
+Draft a formal memo to &lt;office&gt; announcing &lt;initiative&gt;.
+Tone: government; concise; active voice.
+Include: purpose, background, action required, suspense date. Cite relevant directives when available.
+          </pre>
+        </div>
+
+        <h3 class="h6">Quality Checks</h3>
+        <ul class="mb-0">
+          <li>Ask for a <em>second pass</em> focusing on accuracy, tone, and missing citations.</li>
+          <li>Instruct: “If no source is found for a claim, say ‘no source in workspace’ instead of inferring.”</li>
+          <li>When the answer aggregates multiple documents, request a <em>sources-to-claims table</em>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Explore -->
+  <section id="explore" class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Explore & Learn</h2>
+        <p class="mb-2">The best way to learn is to iterate. Try the following exercises:</p>
+        <ol class="mb-0">
+          <li>Upload one short memo, ask for a 5-bullet summary, then ask for a briefing slide outline with citations.</li>
+          <li>Move the same memo into a Group Workspace and have a teammate review the outputs for consistency.</li>
+          <li>Prompt the model to identify <em>assumptions</em> and <em>unknowns</em> and propose targeted follow-up questions.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Excel placeholder -->
+  <section id="excel" class="mb-4">
+    <div class="card shadow-sm border-warning">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Excel Workflows (Placeholder)</h2>
+        <p class="mb-2">
+          This section will document supported Excel patterns (multi-sheet handling, chunking logic, and citation behavior)
+          and recommended practices for readable outputs.
+        </p>
+        <ul class="mb-0">
+          <li><em>To be added:</em> Known issues, “sheet:” labeling conventions, examples for summarizing large tables, and limits.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- SharePoint & Training placeholder -->
+  <section id="sharepoint" class="mb-4">
+    <div class="card shadow-sm border-info">
+      <div class="card-body">
+        <h2 class="h5 mb-3">SharePoint Integration & Training Materials (Placeholder)</h2>
+        <p class="mb-2">
+          This section will provide guidance on linking to organizational SharePoint content, governance considerations,
+          and training resources for end users and supervisors.
+        </p>
+        <ul class="mb-0">
+          <li><em>To be added:</em> Link patterns, permission models, and approved training decks/videos.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Troubleshooting -->
+  <section id="troubleshoot" class="mb-5">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Troubleshooting</h2>
+        <ul class="mb-3">
+          <li><strong>No citations?</strong> Confirm you’re in the correct workspace and the files finished processing. :contentReference[oaicite:11]{index=11}</li>
+          <li><strong>Old or generic answers?</strong> Start a new chat and restate the goal with constraints and format.</li>
+          <li><strong>Access issues?</strong> Check your role under <strong>My Account</strong> or contact an <strong>Admin</strong>.</li>
+          <li><strong>Content blocked?</strong> Content Safety may be enabled; rephrase in mission-appropriate, non-sensitive terms. :contentReference[oaicite:12]{index=12}</li>
+        </ul>
+        <div class="text-muted small">For persistent issues, coordinate with the Admin team.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="text-muted small">
+    Classification banner at top applies site-wide. Use only materials authorized for this environment.
+  </div>
+</div>
+{% endblock %}

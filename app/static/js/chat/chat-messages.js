@@ -1123,7 +1123,7 @@ if (modelSelect) {
 }
 
 /* ===========================
-   Next-word Ghost Suggestion
+   Finish-the-word Ghost Suggestion
    =========================== */
 (() => {
   const inputEl = userInput;
@@ -1134,17 +1134,19 @@ if (modelSelect) {
   let debounceId = null;
   let currentSuggestion = "";
   let lastPrefixSent = "";
+  let lastRequestId = 0;
   const DEBOUNCE_MS = 250;
 
   const atEnd = (el) =>
     el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
 
   function renderOverlay(prefix, suggestion) {
+    // suggestion here is a *suffix* (no spaces) — render right after typed text
     const typedSpan = `<span class="typed" style="color: transparent;">${escapeHtml(
       prefix
     )}</span>`;
     const sugSpan = suggestion
-      ? ` <span class="suggestion" style="color:#9aa0a6;">${escapeHtml(
+      ? `<span class="suggestion" style="color:#9aa0a6;">${escapeHtml(
           suggestion
         )}</span>`
       : "";
@@ -1153,6 +1155,7 @@ if (modelSelect) {
   }
 
   async function fetchSuggestion(prefix) {
+    const myReqId = ++lastRequestId;
     try {
       const resp = await fetch("/api/predict-next-word", {
         method: "POST",
@@ -1161,6 +1164,8 @@ if (modelSelect) {
       });
       if (!resp.ok) return "";
       const data = await resp.json();
+      // discard stale response
+      if (myReqId !== lastRequestId) return "";
       return typeof data?.suggestion === "string" ? data.suggestion : "";
     } catch {
       return "";
@@ -1168,9 +1173,22 @@ if (modelSelect) {
   }
 
   function shouldQuery(prefix) {
-    if (!prefix || prefix.length < 3) return false;
-    if (!/\w$/.test(prefix)) return false;
+    if (!prefix) return false;
+
+    // if user just typed space/newline, there's no word to finish
+    const lastChar = prefix[prefix.length - 1];
+    if (/\s/.test(lastChar)) return false;
+
+    // current fragment = chars since last whitespace
+    const parts = prefix.split(/\s+/);
+    const fragment = parts[parts.length - 1] || "";
+
+    // don't bother on very short fragments
+    if (fragment.length < 2) return false;
+
+    // don't re-send exact same prefix
     if (prefix === lastPrefixSent) return false;
+
     return true;
   }
 
@@ -1207,30 +1225,37 @@ if (modelSelect) {
       );
     }
   });
+
   inputEl.addEventListener("click", () => {
     renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
   });
+
   inputEl.addEventListener("mouseup", () => {
     renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
   });
 
   inputEl.addEventListener("keydown", (e) => {
+    // accept suggestion (suffix)
     if (
       currentSuggestion &&
       atEnd(inputEl) &&
       (e.key === "Tab" || e.key === "ArrowRight")
     ) {
       e.preventDefault();
-      inputEl.value = (inputEl.value || "") + currentSuggestion;
+      const base = inputEl.value || "";
+      // for finish-the-word we do NOT insert a space — just append suffix
+      inputEl.value = base + currentSuggestion;
       currentSuggestion = "";
       renderOverlay(inputEl.value, "");
       inputEl.dispatchEvent(new Event("input", { bubbles: true }));
       return;
     }
+    // clear on escape
     if (e.key === "Escape") {
       clearSuggestion();
       return;
     }
+    // clear on send
     if (e.key === "Enter" && !e.shiftKey) {
       clearSuggestion();
     }
