@@ -1,0 +1,114 @@
+{
+    "id": "app_settings",
+    "app_title": "Simple Chat",
+    "landing_page_text": "You agree to our [acceptable user policy](acceptable_use_policy.html) by using this service.",
+    "show_logo": true,
+    "logo_path": "images/custom_logo.png",
+    "enable_gpt_apim": false,
+    "azure_openai_gpt_endpoint": "<your-gpt-endpoint>",
+    "azure_openai_gpt_api_version": "2024-12-01-preview",
+    "azure_openai_gpt_authentication_type": "key",
+    "azure_openai_gpt_subscription_id": "<your-subscription-id>",
+    "azure_openai_gpt_resource_group": "<your-resource-group>",
+    "azure_openai_gpt_key": "<your-api-key>",
+    "gpt_model": {
+      "selected": [
+        { "deploymentName": "gpt-4o", "modelName": "gpt-4o" }
+      ],
+      "all": [
+        { "deploymentName": "o1", "modelName": "o1" },
+        { "deploymentName": "gpt-4o", "modelName": "gpt-4o" },
+        { "deploymentName": "gpt-4", "modelName": "gpt-4" },
+        { "deploymentName": "o3-mini", "modelName": "o3-mini" }
+      ]
+    },
+    "enable_embedding_apim": false,
+    "azure_openai_embedding_endpoint": "<your-embedding-endpoint>",
+    "azure_openai_embedding_api_version": "2024-12-01-preview",
+    "azure_openai_embedding_authentication_type": "key",
+    "azure_openai_embedding_subscription_id": "<your-subscription-id>",
+    "azure_openai_embedding_resource_group": "<your-resource-group>",
+    "azure_openai_embedding_key": "<your-embedding-key>",
+    "embedding_model": {
+      "selected": [
+        { "deploymentName": "text-embedding-3-small", "modelName": "text-embedding-3-small" }
+      ],
+      "all": [
+        { "deploymentName": "text-embedding-3-small", "modelName": "text-embedding-3-small" }
+      ]
+    },
+    "enable_image_generation": true,
+    "azure_openai_image_gen_endpoint": "<your-image-endpoint>",
+    "azure_openai_image_gen_api_version": "2024-12-01-preview",
+    "azure_openai_image_gen_authentication_type": "key",
+    "azure_openai_image_gen_subscription_id": "<your-subscription-id>",
+    "azure_openai_image_gen_resource_group": "<your-resource-group>",
+    "azure_openai_image_gen_key": "<your-image-key>",
+    "image_gen_model": {
+      "selected": [
+        { "deploymentName": "dall-e-3", "modelName": "dall-e-3" }
+      ],
+      "all": [
+        { "deploymentName": "dall-e-3", "modelName": "dall-e-3" }
+      ]
+    },
+    "enable_user_workspace": true,
+    "enable_group_workspaces": true,
+    "enable_content_safety": true,
+    "content_safety_endpoint": "<your-content-safety-endpoint>",
+    "content_safety_key": "<your-content-safety-key>",
+    "content_safety_authentication_type": "key",
+    "enable_user_feedback": true,
+    "enable_conversation_archiving": true,
+    "enable_web_search": true,
+    "azure_ai_search_endpoint": "<your-ai-search-endpoint>",
+    "azure_ai_search_key": "<your-ai-search-key>",
+    "azure_ai_search_authentication_type": "key",
+    "azure_document_intelligence_endpoint": "<your-doc-intelligence-endpoint>",
+    "azure_document_intelligence_key": "<your-doc-intelligence-key>",
+    "azure_document_intelligence_authentication_type": "key",
+    "max_file_size_mb": 150,
+    "conversation_history_limit": 6,
+    "default_system_prompt": "",
+    "enable_video_file_support": true,
+    "enable_audio_file_support": true,
+    "enable_enhanced_citations": true,
+    "office_docs_storage_account_url": "<your-storage-account-url>",
+    "office_docs_authentication_type": "key",
+    "video_files_storage_account_url": "<your-video-storage-url>",
+    "video_files_authentication_type": "key",
+    "audio_files_storage_account_url": "<your-audio-storage-url>",
+    "audio_files_authentication_type": "key",
+    "enable_extract_meta_data": true,
+    "enable_file_processing_logs": true,
+    "enable_document_classification": true,
+    "document_classification_categories": [
+      { "label": "None", "color": "#808080" },
+      { "label": "N/A", "color": "#808080" },
+      { "label": "Pending", "color": "#79bcfb" },
+      { "label": "Public", "color": "#0aa1ff" },
+      { "label": "CUI", "color": "#20ce09" },
+      { "label": "ITAR", "color": "#d10000" }
+    ],
+    "require_member_of_create_group": false,
+    "require_member_of_safety_violation_admin": false,
+    "require_member_of_feedback_admin": false,
+    "version_check": {
+      "last_checked_datetime": "None",
+      "latest_release_version": "",
+      "url": "https://github.com/microsoft/simplechat/releases"
+    },
+    "enable_summarize_content_history_for_search": false,
+    "enable_summarize_content_history_beyond_conversation_history_limit": false,
+    "number_of_historical_messages_to_summarize": 10,
+    "enable_enhanced_citations_mount": false,
+    "enhanced_citations_mount": "/view_documents",
+    "default_logo_path": "images/logo.svg",
+    "enable_public_workspaces": false,
+    "require_member_of_create_public_workspace": false,
+    "custom_logo_base64": "<base64-encoded-logo>",
+    "logo_version": 9,
+    "custom_logo_dark_base64": "<base64-encoded-dark-logo>",
+    "logo_dark_version": 1
+  }
+  

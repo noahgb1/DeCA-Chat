@@ -1,0 +1,17 @@
+{
+    "id": "<response-id>",
+    "userId": "<user-id>",
+    "prompt": "What is the Cybersecurity Framework? Describe in detail using Introduction, headers, body, bullets, and closing",
+    "aiResponse": "### Introduction\nThe Cybersecurity Framework (CSF) is a structured approach devised by the National Institute of Standards and Technology (NIST)...",
+    "feedbackType": "negative",
+    "reason": "The response was too thorough.",
+    "timestamp": "<iso-timestamp>",
+    "adminReview": {
+        "acknowledged": false,
+        "analyzedBy": null,
+        "analysisNotes": null,
+        "responseToUser": null,
+        "actionTaken": null,
+        "reviewTimestamp": null
+    }
+}

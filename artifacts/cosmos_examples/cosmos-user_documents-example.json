@@ -1,0 +1,37 @@
+{
+    "id": "<document-id>",
+    "file_name": "CISA203.020Guidebook v1.1.pdf",
+    "num_chunks": 0,
+    "number_of_pages": 29,
+    "current_file_chunk": 29,
+    "num_file_chunks": 1,
+    "upload_date": "<upload-timestamp>",
+    "last_updated": "<last-updated-timestamp>",
+    "version": 1,
+    "status": "Processing complete",
+    "percentage_complete": 100,
+    "document_classification": "Public",
+    "type": "document_metadata",
+    "user_id": "<user-id>",
+    "document_id": "<document-id>",
+    "title": "CISA TIC 3.0 Program Guidebook v1.1",
+    "authors": [
+        "Cybersecurity and Infrastructure Security Agency"
+    ],
+    "enhanced_citations": true,
+    "organization": "Department of Homeland Security (DHS)",
+    "publication_date": "07/2021",
+    "keywords": [
+        "Trusted Internet Connections",
+        "cybersecurity",
+        "federal networks",
+        "TIC 3.0",
+        "CISA guidance",
+        "cloud adoption",
+        "network architecture",
+        "perimeter security",
+        "federal IT modernization",
+        "security capabilities"
+    ],
+    "abstract": "The CISA TIC 3.0 Program Guidebook outlines updated cybersecurity guidance aiming to enhance security for federal networks by adopting flexible architectures and leveraging modern technologies. It describes key documents, strategic goals, and implementation frameworks to ensure secure and scalable network architectures."
+}

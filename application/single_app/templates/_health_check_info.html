@@ -1,0 +1,267 @@
+<!-- Health Check Configuration Information Modal -->
+<div class="modal fade" id="healthCheckInfoModal" tabindex="-1" aria-labelledby="healthCheckInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="healthCheckInfoModalLabel">
+                    <i class="bi bi-heart-pulse me-2"></i>
+                    Azure App Service Health Check Configuration Guide
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>What is Health Check?</strong> Azure App Service Health Check increases your application's availability by removing unhealthy instances from the load balancer. It monitors a specified path on your application to determine instance health.
+                </div>
+
+                <!-- Current Configuration Display -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-gear me-2"></i>Current Configuration</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>External Health Check Enabled:</strong>
+                                <span id="modal-health-check-enabled" class="badge bg-secondary">No</span>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Health Check Endpoint:</strong>
+                                <code id="modal-health-check-endpoint">/external/healthcheck</code>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-12">
+                                <strong>Full Health Check URL:</strong><br>
+                                <code id="modal-health-check-url">https://your-app.azurewebsites.net/external/healthcheck</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Azure App Service Configuration -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-cloud me-2"></i>Azure App Service Health Check Setup</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-4">
+                            <h6>Step 1: Enable Health Check in Azure Portal</h6>
+                            <ol class="mb-3">
+                                <li>Go to the <strong>Azure portal</strong> and select your App Service app</li>
+                                <li>In the left pane, under <strong>Monitoring</strong>, select <strong>Health check</strong></li>
+                                <li>Check the <strong>Enable</strong> checkbox</li>
+                                <li>Provide a valid URL path for your application</li>
+                                <li>Click <strong>Save</strong></li>
+                            </ol>
+                            
+                            <div class="alert alert-warning">
+                                <strong>Important:</strong> Make sure to enable the External Health Check endpoint in this application's settings (above) before configuring Azure App Service Health Check.
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Step 2: Configure Health Check Path</h6>
+                            <p class="mb-3">Use one of these recommended paths in the Azure portal:</p>
+                            
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Recommended Health Check Paths:</strong></label>
+                                
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">Path</span>
+                                    <input type="text" class="form-control" id="copy-health-path-1" readonly value="/external/healthcheck">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('copy-health-path-1')">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <strong>Recommendation:</strong> Use <code>/external/healthcheck</code> as it's specifically designed for external monitoring systems and provides detailed application health information.
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6>Step 3: Configure Advanced Settings (Optional)</h6>
+                            <p class="mb-3">You can also configure additional health check settings:</p>
+                            
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Setting</th>
+                                            <th>Recommended Value</th>
+                                            <th>Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>Load balancing threshold</strong></td>
+                                            <td>10 minutes</td>
+                                            <td>Time until a failing instance is deemed unhealthy and removed</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Health check grace period</strong></td>
+                                            <td>10 minutes</td>
+                                            <td>Time to wait before health checks start after deployment</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Health Check Response Details -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-code-square me-2"></i>Health Check Response Details</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-3">The <code>/external/healthcheck</code> endpoint returns detailed health information:</p>
+                        
+                        <div class="mb-3">
+                            <h6>Healthy Response (HTTP 200)</h6>
+                            <div class="bg-light p-3 rounded">
+                                <pre class="mb-0"><code>{
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "version": "1.0.0",
+  "checks": {
+    "database": "healthy",
+    "storage": "healthy",
+    "external_services": "healthy"
+  }
+}</code></pre>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>Unhealthy Response (HTTP 503)</h6>
+                            <div class="bg-light p-3 rounded">
+                                <pre class="mb-0"><code>{
+  "status": "unhealthy",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "version": "1.0.0",
+  "checks": {
+    "database": "unhealthy",
+    "storage": "healthy",
+    "external_services": "timeout"
+  },
+  "errors": ["Database connection failed", "External service timeout"]
+}</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Best Practices -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Best Practices</h6>
+                    </div>
+                    <div class="card-body">
+                        <ul class="mb-0">
+                            <li><strong>Use a dedicated endpoint:</strong> The <code>/external/healthcheck</code> endpoint is designed specifically for health monitoring</li>
+                            <li><strong>Test dependencies:</strong> The health check validates database connectivity, storage access, and critical services</li>
+                            <li><strong>Keep it lightweight:</strong> Health checks should be fast and not consume significant resources</li>
+                            <li><strong>Monitor regularly:</strong> Set up appropriate monitoring intervals (typically 1-5 minutes)</li>
+                            <li><strong>Handle failures gracefully:</strong> Ensure health checks don't cause cascading failures</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Troubleshooting -->
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="bi bi-tools me-2"></i>Troubleshooting</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="accordion" id="healthCheckTroubleshootingAccordion">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="healthTroubleshoot1">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#healthCollapse1">
+                                        Health check endpoint returns 404
+                                    </button>
+                                </h2>
+                                <div id="healthCollapse1" class="accordion-collapse collapse" data-bs-parent="#healthCheckTroubleshootingAccordion">
+                                    <div class="accordion-body">
+                                        <p><strong>Solution:</strong> Make sure the "Enable External Health Check Endpoint" setting is enabled in the application configuration above.</p>
+                                        <p>The endpoint is only available when this setting is turned on.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="healthTroubleshoot2">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#healthCollapse2">
+                                        Health check reports unhealthy status
+                                    </button>
+                                </h2>
+                                <div id="healthCollapse2" class="accordion-collapse collapse" data-bs-parent="#healthCheckTroubleshootingAccordion">
+                                    <div class="accordion-body">
+                                        <p><strong>Check the following:</strong></p>
+                                        <ul>
+                                            <li>Database connectivity and credentials</li>
+                                            <li>Azure storage account access</li>
+                                            <li>External service dependencies</li>
+                                            <li>Application configuration settings</li>
+                                        </ul>
+                                        <p>Review the health check response for specific error details.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="healthTroubleshoot3">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#healthCollapse3">
+                                        Instances being removed from load balancer
+                                    </button>
+                                </h2>
+                                <div id="healthCollapse3" class="accordion-collapse collapse" data-bs-parent="#healthCheckTroubleshootingAccordion">
+                                    <div class="accordion-body">
+                                        <p><strong>Possible causes:</strong></p>
+                                        <ul>
+                                            <li>Health check threshold set too low</li>
+                                            <li>Application startup time exceeds grace period</li>
+                                            <li>Transient connectivity issues</li>
+                                        </ul>
+                                        <p><strong>Solutions:</strong> Increase the load balancing threshold or grace period, check application logs for startup issues.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <a href="https://learn.microsoft.com/en-us/azure/app-service/monitor-instances-health-check" target="_blank" class="btn btn-primary">
+                    <i class="bi bi-book me-2"></i>View Full Documentation
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateHealthCheckModalInfo() {
+    const healthCheckEnabled = document.getElementById('enable_external_healthcheck')?.checked || false;
+    
+    // Update modal status
+    document.getElementById('modal-health-check-enabled').textContent = healthCheckEnabled ? 'Yes' : 'No';
+    document.getElementById('modal-health-check-enabled').className = healthCheckEnabled ? 'badge bg-success' : 'badge bg-secondary';
+    
+    // Update health check URL (you might want to get the actual app URL from your settings)
+    const baseUrl = window.location.origin || 'https://your-app.azurewebsites.net';
+    document.getElementById('modal-health-check-url').textContent = `${baseUrl}/external/healthcheck`;
+}
+
+// Update modal info when the modal is opened
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('healthCheckInfoModal');
+    if (modal) {
+        modal.addEventListener('show.bs.modal', updateHealthCheckModalInfo);
+    }
+});
+</script>

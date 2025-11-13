@@ -1,0 +1,27 @@
+{
+    "id": "<violation-id>",
+    "user_id": "<user-id>",
+    "conversation_id": "<conversation-id>",
+    "message": "<redacted>",
+    "triggered_categories": [
+        {
+            "category": "Hate",
+            "severity": 0
+        },
+        {
+            "category": "SelfHarm",
+            "severity": 0
+        },
+        {
+            "category": "Sexual",
+            "severity": 0
+        },
+        {
+            "category": "Violence",
+            "severity": 4
+        }
+    ],
+    "blocklist_matches": [],
+    "timestamp": "<iso-timestamp>",
+    "reason": "Max severity >= 4"
+}

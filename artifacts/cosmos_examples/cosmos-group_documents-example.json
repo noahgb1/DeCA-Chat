@@ -1,0 +1,38 @@
+{
+    "id": "<document-id>",
+    "file_name": "NanoPZ.pdf",
+    "num_chunks": 0,
+    "number_of_pages": 52,
+    "current_file_chunk": 52,
+    "num_file_chunks": 1,
+    "upload_date": "<upload-timestamp>",
+    "last_updated": "<last-updated-timestamp>",
+    "version": 1,
+    "status": "Processing complete",
+    "percentage_complete": 100,
+    "document_classification": "Pending",
+    "type": "document_metadata",
+    "group_id": "<group-id>",
+    "document_id": "<document-id>",
+    "user_id": "<user-id>",
+    "title": "NanoPZ",
+    "authors": [
+        "Firstname Lastname"
+    ],
+    "enhanced_citations": true,
+    "organization": "Newport Corporation",
+    "publication_date": "08/2005",
+    "keywords": [
+        "NanoPZ system",
+        "piezo motor actuator",
+        "PZA12",
+        "PZC200 controller",
+        "ultra-high resolution motion",
+        "optical mounts",
+        "laboratory equipment",
+        "motion control",
+        "RS-485 connectivity",
+        "precision instruments"
+    ],
+    "abstract": "The NanoPZ system is an ultra-high resolution motion system designed for precise positioning in laboratory settings, providing nanometer-scale accuracy with its piezo motor actuators and controllers."
+}

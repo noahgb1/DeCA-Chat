@@ -1,0 +1,1446 @@
+/* chats.css */
+
+/* Prevent initial layout shift by disabling transitions on page load */
+.no-transitions *,
+.no-transitions #left-pane,
+.no-transitions #right-pane {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* Remove all margin from sidebar navigation */
+.nav.flex-column {
+    margin: 0 !important;
+}
+/* Fix for document dropdown visibility */
+#document-dropdown .dropdown-menu.show {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  z-index: 1050 !important; /* Ensure it's above other elements */
+}
+
+/* Handle dropdown positioning at the edge of viewport */
+#document-dropdown.dropup .dropdown-menu {
+  bottom: 100% !important;
+  top: auto !important;
+  margin-bottom: 0.125rem;
+}
+
+#document-dropdown .dropdown-menu {
+  width: auto;
+  min-width: 400px; /* Increased width as requested */
+  max-width: 400px; /* Increased width as requested */
+  max-height: 60vh; /* Use viewport height for better adaptation */
+  overflow: hidden;
+  padding: 8px;
+  position: absolute;
+  left: 0 !important; /* Keep it aligned to the left of its container */
+  right: auto !important; /* Prevent right positioning */
+}
+
+/* Document dropdown items must be explicitly displayed */
+#document-dropdown .dropdown-item {
+  display: block !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  width: 100%; /* Ensure items take full width of their container */
+  text-align: left;
+  max-width: 100%; /* Ensure items don't exceed container width */
+}
+
+/* Only hide when explicitly told to */
+#document-dropdown .dropdown-item[data-filtered="hidden"] {
+  display: none !important;
+}
+
+#document-dropdown .dropdown-items-container {
+  max-height: 55vh; /* A bit less than the menu to leave room for search */
+  overflow-y: auto;
+  padding: 0;
+  width: 100%; /* Take full width of parent */
+  max-width: 100%; /* Don't exceed parent width */
+}
+
+/* Search container styling */
+#document-dropdown .document-search-container {
+  margin-bottom: 8px;
+  padding: 0 8px;
+}
+
+#document-dropdown #document-search-input {
+  width: 100%; 
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+/* Style the no matches message */
+#document-dropdown .no-matches {
+  padding: 10px;
+  font-style: italic;
+  color: #6c757d;
+}
+
+#document-dropdown-button {
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 1.5rem; /* Leave space for the dropdown icon */
+}
+
+#document-dropdown-button .selected-document-text {
+  max-width: calc(100% - 20px); /* Make room for the dropdown icon */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+#document-dropdown-button i {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+#document-dropdown-items .dropdown-item {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  display: block;
+  width: 100%; /* Ensure items take full width of their container */
+  text-align: left;
+  max-width: 100%; /* Ensure items don't exceed container width */
+}
+
+#document-dropdown-items .dropdown-item.active {
+  background-color: #e9ecef;
+  color: #212529;
+}
+
+#document-dropdown-items .dropdown-item:hover {
+  background-color: #f8f9fa;
+}
+
+/* chats.css */
+/* Style for the classification badge in the chat header */
+
+
+#split-container {
+  display: flex;
+  flex-direction: row; /* Explicitly set direction */
+  flex-wrap: nowrap;   /* *** IMPORTANT: Prevent wrapping *** */
+  height: 100%;
+  width: 100%;
+  overflow: hidden; /* Prevent container itself from scrolling */
+}
+
+
+#left-pane {
+  height: 100%;      /* Make panes fill the container height */
+  overflow: hidden; /* Prevent panes themselves from scrolling */
+  margin-right: 10px; /* Optional: space between left and right panes */
+  /* d-flex and flex-column are already on the elements via HTML classes for internal layout */
+}
+
+#right-pane {
+  height: 100%;      /* Make panes fill the container height */
+  overflow: hidden; /* Prevent panes themselves from scrolling */
+  margin-left: 30px; /* Optional: space between left and right panes */
+  /* d-flex and flex-column are already on the elements via HTML classes for internal layout */
+  /* Center the content within the right pane by default */
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+/* Center and constrain the width of right pane content by default */
+#right-pane > div {
+  width: 100% !important;
+  max-width: 1000px !important; /* Constrain maximum width for better readability */
+}
+
+
+.chat-classification-badge {
+  display: inline-block;
+  padding: 0.35em 0.65em; /* Match Bootstrap badge padding */
+  font-size: 0.75em;   /* Match Bootstrap badge font size */
+  font-weight: 600;
+  line-height: 1;
+  color: #fff; /* Default white text */
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: 0.375rem; /* Bootstrap's default badge radius */
+  margin-right: 4px; /* Add spacing between badges */
+  margin-bottom: 4px; /* Add spacing if they wrap */
+}
+/* Helper class for text contrast */
+.chat-classification-badge.text-dark {
+  color: #212529 !important; /* Bootstrap dark text color */
+}
+
+#left-pane {
+  background-color: #ffffff; /* Or a slightly off-white color */
+}
+
+/* Example: More subtle internal borders in right pane */
+#right-pane .border-bottom,
+#right-pane .border-top {
+  border-color: #e9ecef !important; /* Lighter border color */
+}
+
+/* Dark mode overrides for chat UI elements */
+[data-bs-theme="dark"] #left-pane {
+  background-color: #2b3035; /* Darker background for left pane in dark mode */
+}
+
+[data-bs-theme="dark"] #right-pane .border-bottom,
+[data-bs-theme="dark"] #right-pane .border-top {
+  border-color: #495057 !important; /* Darker border color for dark mode */
+}
+
+/* Basic styling for the split layout */
+.split-container {
+  display: flex;
+  flex-direction: row;
+  height: 100%; /* Ensure it fills the parent height */
+}
+#left-pane, #right-pane {
+  height: 100%; /* Ensure panes fill height */
+  overflow: hidden; /* Prevent double scrollbars initially */
+}
+/* Make sure inner content scrolls, not the pane itself */
+#left-pane > div:not(.border-bottom), /* Target content wrappers */
+#right-pane > div:not(.border-bottom):not(.border-top) { /* Target chatbox */
+   height: 100%;
+   overflow-y: auto;
+}
+/* Gutter styling */
+.gutter {
+  background-color: #ffffff;
+  background-repeat: no-repeat;
+  background-position: 50%;
+  /* position: relative; - Generally not needed unless overlapping */
+  flex-shrink: 0; /* Prevent gutter from shrinking */
+}
+
+[data-bs-theme="dark"] .gutter {
+  background-color: #212529; /* Dark background for the gutter in dark mode */
+}
+.gutter.gutter-horizontal {
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeAPTBAPAXJmw1AAAAAElFTkSuQmCC');
+  cursor: col-resize;
+}
+/* Style when docked - CLEAN SIMPLE IMPLEMENTATION */
+body.layout-docked #left-pane {
+  position: fixed !important;
+  top: 66px !important; /* Below navbar */
+  left: 0 !important;
+  width: 320px !important;
+  height: calc(100vh - 66px) !important;
+  z-index: 1031 !important;
+  background: var(--bs-body-bg, white) !important;
+  border-right: 1px solid var(--bs-border-color, #dee2e6) !important;
+}
+
+body.layout-docked #right-pane {
+  margin-left: 320px !important;
+  width: calc(100% - 320px) !important;
+  height: calc(100vh - 66px) !important;
+  position: relative !important;
+  /* Center content horizontally */
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+/* Center and limit width of right pane content */
+body.layout-docked #right-pane > div {
+  width: 100% !important;
+  max-width: 1000px !important;
+}
+
+/* When classification banner is present */
+body.has-classification-banner.layout-docked #left-pane {
+  top: 106px !important;
+  height: calc(100vh - 106px) !important;
+}
+
+body.has-classification-banner.layout-docked #right-pane {
+  height: calc(100vh - 106px) !important;
+}
+
+/* Hide Split.js gutter when docked */
+body.layout-docked .gutter {
+  display: none !important;
+}
+
+/*
+ * REMOVED a set of problematic rules that were here.
+ * The rules `body.layout-docked .container`, `body.layout-docked .container-fluid`, etc.
+ * were too broad and were incorrectly applying a margin to the top navigation bar,
+ * causing the layout issue. The corrected `#right-pane` rule above now handles the layout correctly.
+ */
+
+
+/* --- Styles SPECIFICALLY for Split Layout --- */
+/* Ensure split layout container is flex row and doesn't wrap */
+body.layout-split #split-container {
+    display: flex !important; /* Redundant but safe */
+    flex-direction: row !important; /* Redundant but safe */
+    flex-wrap: nowrap !important; /* *** Crucial reinforcement *** */
+}
+
+/* Ensure panes reset positioning/sizing for flex control */
+body.layout-split #left-pane {
+  position: relative !important; /* Override fixed */
+  top: auto !important;
+  left: auto !important;
+  width: auto !important; /* Let flex-basis control */
+  height: 100% !important; /* Ensure full height */
+  z-index: auto !important;
+  border: none !important; /* Remove borders */
+  transform: none !important; /* Reset transform */
+  margin-left: 0 !important; /* Reset margin */
+  /* flex-basis will be set by Split.js */
+  overflow: hidden; /* Keep inner scroll */
+}
+
+body.layout-split #right-pane {
+    position: relative !important; /* Override fixed */
+    top: auto !important;
+    left: auto !important;
+    width: auto !important; /* Let flex-basis control */
+    height: 100% !important; /* Ensure full height */
+    z-index: auto !important;
+    border: none !important; /* Remove borders */
+    transform: none !important; /* Reset transform */
+    /* flex-basis will be set by Split.js */
+    overflow: hidden; /* Keep inner scroll */
+    /* Center the content within the right pane */
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+}
+
+/* Center and constrain the width of right pane content in split mode */
+body.layout-split #right-pane > div {
+    width: 100% !important;
+    max-width: 1000px !important; /* Constrain maximum width for better readability */
+}
+
+/* Ensure gutter is visible and sized correctly in split mode */
+body.layout-split .gutter {
+    display: block !important;
+    /* flex-basis will be set by Split.js gutterStyle option */
+    flex-shrink: 0; /* Prevent gutter from shrinking */
+}
+
+/* Style for the container holding the badges */
+#current-conversation-classifications {
+  line-height: 1.5; /* Adjust line height if badges wrap */
+}
+/* Custom styles for the Conversations List */
+#conversations-list,
+#conversations-list-offcanvas {
+  max-height: calc(100vh - 140px);
+  overflow-y: auto !important;
+}
+
+/* Ensure conversations list scrolls properly when top nav is active */
+#conversations-list {
+  height: calc(100vh - 140px);
+  min-height: 200px;
+}
+
+.conversation-item {
+  cursor: pointer;
+  padding: 10px;
+  border-bottom: 1px solid #dee2e6;
+  color: #212529;
+  /* Set default text color to dark grey */
+  background-color: #ffffff;
+  /* Optional: Set default background to white */
+}
+
+[data-bs-theme="dark"] .conversation-item {
+  border-bottom: 1px solid #495057;
+  color: #e9ecef;
+  background-color: #2b3035; /* Dark background */
+}
+
+[data-bs-theme="dark"] .conversation-item:hover,
+[data-bs-theme="dark"] .conversation-item.active {
+  background-color: #343a40; /* Slightly lighter for hover/active state */
+  color: #ffffff; /* Bright text for better contrast */
+}
+
+.citations-container {
+  /* background-color: #f0f0f0; Slightly different bg if needed */
+  padding: 10px 0 5px 0; /* Padding top/bottom, no horizontal needed */
+  margin-top: 10px; /* Space above the border-top */
+  border-top: 1px solid #e0e0e0 !important; /* Separator line */
+  /* max-height and overflow-y are removed - let it expand */
+}
+
+.citation-button {
+  font-size: 0.8rem; /* Smaller text */
+  padding: 0.2rem 0.5rem; /* Adjust padding */
+  white-space: normal; /* Allow text wrapping within button */
+  text-align: left;   /* Align text left if it wraps */
+  line-height: 1.3;   /* Adjust line height for wrapped text */
+  /* display: inline-flex; */ /* Ensures icon and text align nicely */
+  /* align-items: center; */
+  max-width: 100%; /* Prevent button from becoming excessively wide */
+}
+
+.citation-button i {
+  font-size: 0.9em; /* Icon size relative to button text */
+  vertical-align: text-top; /* Align icon better with first line of text */
+  margin-right: 4px !important; /* Ensure consistent spacing */
+}
+
+
+
+.citations-container a:hover {
+  text-decoration: underline;
+  background-color: #e9ecef; /* Slight hover background */
+}
+
+.citations-container .hybrid-citation-link i,
+.citations-container .web-citation-link i {
+  color: #a1a3a5; /* Muted icon color */
+  font-size: 0.9em; /* Slightly smaller icon */
+}
+
+.citation-toggle-btn {
+  /* Remove border, background, and extra padding */
+  background: none;
+  border: none;
+  padding: 0;
+  
+  /* Match the color and size of the feedback icons, which use .text-muted by default */
+  color: #6c757d;
+  font-size: 1.0rem; /* or 1rem, whichever matches your thumbs icons exactly */
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.5rem; /* small spacing to the next icon */
+  font-weight: bold;
+}
+
+
+.citation-toggle-btn:hover {
+  color: #0d6efd;
+  background-color: #e9ecef; /* Light hover */
+  border-color: #adb5bd;
+}
+
+.conversation-item:hover,
+.conversation-item.active {
+  background-color: #f8f9fa;
+  /* Light grey background for hover and active */
+  color: #212529;
+  /* Dark grey text for better contrast */
+}
+
+.message-footer {
+  /* position: absolute; bottom: 8px; left: 10px; right: 10px; */ /* Removed absolute positioning */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px; /* Space above the footer */
+  min-height: 25px;
+  padding-top: 5px; /* Add a little space if border-top removed */
+  /* border-top: 1px solid #e9ecef; Optional subtle separator for footer */
+}
+
+/* Style for the combined copy/feedback buttons */
+.message-actions {
+  display: flex;
+  align-items: center;
+}
+
+/* User message footer styling */
+.user-message .message-footer {
+  padding-top: 5px;
+  margin-top: 8px;
+}
+
+.copy-user-btn, .source-user-btn {
+  border: none;
+  background: transparent;
+  color: #6c757d;
+  font-size: 0.875rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.copy-user-btn, .metadata-toggle-btn {
+  border: none;
+  background: transparent;
+  color: #6c757d;
+  font-size: 0.875rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.copy-user-btn:hover, .metadata-toggle-btn:hover {
+  color: #0d6efd;
+  background-color: #e3f2fd;
+}
+
+/* Metadata drawer styling */
+.metadata-container {
+  font-size: 0.875rem;
+  color: #6c757d;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.metadata-content {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+/* Responsive grid layout for metadata sections */
+@media (min-width: 768px) {
+  .metadata-content {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .metadata-content {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.metadata-section {
+  margin-bottom: 0; /* Remove margin since grid gap handles spacing */
+  break-inside: avoid; /* Prevent sections from breaking across columns in some browsers */
+}
+
+.metadata-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #495057;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+}
+
+.metadata-item {
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.4;
+}
+
+.metadata-item .badge {
+  font-size: 0.7rem;
+  margin-left: 0.25rem;
+  vertical-align: middle;
+}
+
+.metadata-code {
+  font-size: 0.75rem;
+  background-color: #e9ecef;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  white-space: pre-wrap;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.copy-user-btn:hover, .source-user-btn:hover {
+  color: #0d6efd;
+  background-color: #e3f2fd;
+}
+
+[data-bs-theme="dark"] .copy-user-btn,
+[data-bs-theme="dark"] .source-user-btn {
+  color: #adb5bd;
+}
+
+[data-bs-theme="dark"] .copy-user-btn,
+[data-bs-theme="dark"] .metadata-toggle-btn {
+  color: #adb5bd;
+}
+
+[data-bs-theme="dark"] .copy-user-btn:hover,
+[data-bs-theme="dark"] .source-user-btn:hover {
+  color: #ffffff;
+  background-color: #0a58ca;
+}
+
+[data-bs-theme="dark"] .copy-user-btn:hover,
+[data-bs-theme="dark"] .metadata-toggle-btn:hover {
+  color: #ffffff;
+  background-color: #0a58ca;
+}
+
+/* Dark mode metadata drawer styling */
+[data-bs-theme="dark"] .metadata-container {
+  background-color: #343a40;
+  color: #adb5bd;
+  border-color: #495057;
+}
+
+[data-bs-theme="dark"] .metadata-title {
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .metadata-code {
+  background-color: #495057;
+  border-color: #6c757d;
+  color: #e9ecef;
+}
+
+/* Ensure the image is a fixed small size */
+.image-message .generated-image {
+  width: 170px;
+  height: 170px;
+  display: block; /* Ensures the bubble height matches */
+}
+
+
+/* Chatbox styling */
+#chatbox {
+  padding: 5px;
+  overflow-y: auto;
+  flex-grow: 1;
+  background-color: #ffffff; /* Optional: light background color for the chat area */
+}
+
+[data-bs-theme="dark"] #chatbox {
+  background-color: #212529; /* Match container main-content in dark mode */
+}
+
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.classification-container {
+  margin-top: 4px;
+}
+
+.classification-container .badge {
+  font-size: 0.75rem; /* slightly smaller if you want */
+}
+/* Style for the cited text content */
+#cited-text-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* Optional: Style the modal title for emphasis */
+.modal-title {
+  font-weight: bold;
+  font-size: 1.25rem;
+}
+
+/* Custom scrollbar for modal body */
+.modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+a.citation-link {
+  color: #0d6efd;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+a.citation-link:hover {
+  color: #0a58ca;
+  text-decoration: none;
+}
+
+/* Loading indicator styling */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  color: #888;
+  margin-bottom: 1rem;
+}
+
+.loading-indicator .spinner-border {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-right: 0.5rem;
+}
+
+/* Styles for the search button */
+.search-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hide the text initially */
+.search-btn .search-btn-text {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+/* When the button is active */
+.search-btn.active {
+  width: auto;
+  border-radius: 20px;
+  /* Less rounded when expanded */
+  padding: 0 15px;
+}
+
+/* Show the text when active */
+.search-btn.active .search-btn-text {
+  opacity: 1;
+  width: auto;
+  margin-left: 8px;
+}
+
+/* Change button style when active */
+.search-btn.active {
+  background-color: #0d6efd;
+  color: #fff;
+  border-color: #0d6efd;
+}
+
+/* Update the icon and text color when active */
+.search-btn.active i,
+.search-btn.active .search-btn-text {
+  color: #fff;
+}
+
+/* Set icon color when not active */
+.search-btn i {
+  color: #0d6efd;
+  /* Bootstrap primary color */
+}
+
+/* Styles for the file button */
+.file-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hide the text initially */
+.file-btn .file-btn-text {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+/* When the button is active (after file selection) */
+.file-btn.active {
+  width: auto;
+  border-radius: 20px;
+  padding: 0 15px;
+}
+
+.file-btn.active .file-btn-text {
+  opacity: 1;
+  width: auto;
+  margin-left: 8px;
+}
+
+/* Change button style when active */
+.file-btn.active {
+  background-color: #0d6efd;
+  color: #fff;
+  border-color: #0d6efd;
+}
+
+.file-btn.active i,
+.file-btn.active .file-btn-text {
+  color: #fff;
+}
+
+/* Set icon color when not active */
+.file-btn i {
+  color: #0d6efd;
+}
+
+.btn-outline-secondary:hover {
+  background-color: #e0e0e0; /* Light grey */
+  border-color: #e0e0e0;
+}
+
+/* Ensure the icon color remains readable */
+.btn-outline-secondary:hover .bi {
+  color: #000; /* Black icon color */
+}
+
+/* Ensure button text color remains black on hover */
+.btn-outline-secondary:hover,
+.btn-outline-secondary:hover .search-btn-text,
+.btn-outline-secondary:hover .file-btn-text {
+  color: #000; /* Black text color */
+}
+
+/* Message container */
+.message {
+  display: flex;
+  width: 100%;
+  min-width: 0; /* <-- This is crucial for flex children to shrink! */
+  margin-bottom: 10px;
+}
+
+/* User messages aligned to the right */
+.user-message {
+  justify-content: flex-end;
+}
+
+/* AI messages aligned to the left */
+.ai-message {
+  justify-content: flex-start;
+}
+
+/* Message bubble */
+.message-bubble {
+  max-width: 90%;
+  min-width: 0; /* <-- This is crucial for flex children to shrink! */
+  width: 100%;
+  padding: 10px;
+  border-radius: 15px;
+  position: relative;
+  background-color: #f8f9fa; /* Default light grey */
+  /* Remove fixed padding-bottom here, let content determine height */
+}
+
+/* User message bubble styling */
+.user-message .message-bubble {
+  background-color: #c8e0fa; /* Blue */
+  color: black;
+  border-bottom-right-radius: 0;
+}
+
+
+/* AI message bubble styling */
+.ai-message .message-bubble {
+  background-color: #f1f0f0; /* Lighter grey for AI */
+  color: black;
+  border-bottom-left-radius: 0;
+}
+
+/* File message bubble styling */
+.file-message .message-bubble {
+  background-color: #e8f5e9; /* Green */
+  color: black;
+  border-bottom-right-radius: 0;
+}
+
+.image-message .message-bubble {
+  /* Styles for image bubble */
+  display: inline-block;
+  width: auto;
+  max-width: 200px;
+  padding: 5px;
+  background-color: #f1f0f0;
+  border-radius: 10px;
+}
+
+/* Dark mode message bubbles */
+[data-bs-theme="dark"] .message-bubble {
+  background-color: #343a40; /* Darker for dark mode */
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .user-message .message-bubble {
+  background-color: #0d6efd; /* Darker blue for dark mode */
+  color: #ffffff;
+}
+
+[data-bs-theme="dark"] .ai-message .message-bubble {
+  background-color: #495057; /* Darker grey for AI in dark mode */
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .file-message .message-bubble {
+  background-color: #198754; /* Darker green for dark mode */
+  color: #ffffff;
+}
+
+[data-bs-theme="dark"] .image-message .message-bubble {
+  background-color: #495057;
+}
+
+.message-bubble,
+.message-text {
+  /* fall back to normal wrapping for most text */
+  white-space: normal !important;
+
+  /* if wrap needed, move word to next line */
+  word-break: normal;
+  /* Prevent chatbox and message containers from horizontal scrolling */       
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  min-width: 0; /* <-- This is crucial for flex children to shrink! */
+}
+
+/* Sender label */
+.message-sender {
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+/* Message text */
+.message-text {
+  margin-bottom: 10px; /* Add some space before the footer or citation box */
+}
+
+/* Optional: Style links within messages */
+.message-text a {
+  color: #0d6efd;
+  text-decoration: underline;
+}
+
+.message-text a:hover {
+  color: #0a58ca;
+  text-decoration: none;
+}
+
+/* File links in dark mode - improved contrast on green background */
+[data-bs-theme="dark"] .file-message .message-bubble .file-link {
+  color: #ffffff; /* White for best contrast on dark green (4.53:1 ratio) */
+}
+
+[data-bs-theme="dark"] .file-message .message-bubble .file-link:hover {
+  color: #f0f8ff; /* Very light blue on hover */
+  text-decoration: none;
+}
+
+/* Reset margins for paragraphs */
+.message-text p {
+  margin-top: 0;
+  margin-bottom: 0.5em; /* Adjust as needed */
+}
+
+/* Reset margins for lists */
+.message-text ul,
+.message-text ol {
+  margin-top: 0;
+  margin-bottom: 0.5em; /* Adjust as needed */
+  padding-left: 1.5em; /* Maintain indentation */
+}
+
+/* Reset margins for list items */
+.message-text li {
+  margin-top: 0;
+  margin-bottom: 0.25em; /* Adjust as needed */
+}
+
+.message-content {
+  display: flex;
+  align-items: flex-end;
+}
+
+.message-content.flex-row-reverse {
+  flex-direction: row-reverse;
+}
+
+/* Avatar styling */
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user-message .avatar {
+  margin-left: 10px;
+}
+
+.ai-message .avatar {
+  margin-right: 10px;
+}
+
+.file-message {
+  justify-content: flex-end;
+}
+
+/* Style code blocks */
+
+/* Code blocks: force internal scroll, never overflow parent */
+pre,
+pre[class*="language-"] {
+  overflow-x: auto !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box;
+  display: block;
+  /* Optional: prevent code from wrapping */
+  white-space: pre;
+}
+
+/* Code element inside pre: don't expand parent */
+pre code {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* Dark mode styling for code blocks not caught by prism.css */
+[data-bs-theme="dark"] pre code:not([class*="language-"]) {
+  background-color: #343a40;
+  color: #e9ecef;
+}
+
+/* Style blockquotes */
+blockquote {
+  border-left: 4px solid #dee2e6;
+  padding-left: 1em;
+  color: #6c757d;
+}
+
+/* Style lists */
+ul,
+ol {
+  margin-left: 1.5em;
+}
+
+.feedback-btn {
+  transition: transform 0.2s ease, color 0.4s ease;
+}
+
+.feedback-btn.clicked {
+  color: #0d6efd !important;
+  transform: scale(1.2);
+}
+
+.feedback-btn.clicked.fade-back {
+  color: #6c757d;  /* original text-muted color */
+  transform: scale(1.0);
+}
+
+.field-label {
+  font-size: 0.8em;
+  color: gray;
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Style the read-only text in document-meta mode */
+.doc-meta-value {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 6px;
+  background-color: #f9f9f9;
+  min-height: 1.8em;
+  cursor: default;
+}
+.doc-meta-value:hover {
+  background-color: #f1f1f1;
+}
+
+/* Classification “drop-down” that shows checkboxes in filter mode */
+.classification-dropdown {
+  position: relative;
+  display: inline-block;
+}
+.classification-dropdown-btn {
+  width: 150px;
+  text-align: left;
+  background-color: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+}
+.classification-dropdown-btn:after {
+  content: " \25BC"; /* down arrow */
+  float: right;
+  color: #999;
+}
+.classification-dropdown-content {
+  display: none; /* hidden by default */
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-top: 2px;
+  padding: 8px;
+  z-index: 9999;
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 150px;
+  z-index: 9999;
+}
+.classification-dropdown-content.show {
+  display: block;
+}
+.classification-dropdown-content label {
+  display: block;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.classification-dropdown-content input[type="checkbox"] {
+  margin-right: 5px;
+}
+
+/* Make the classification text in doc-meta mode also smaller gray label for consistency */
+.classification-text-readonly {
+  font-size: 0.9em;
+  color: #333;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 6px;
+  background-color: #f9f9f9;
+  cursor: default;
+}
+.classification-text-readonly:hover {
+  background-color: #f1f1f1;
+}
+
+/* For convenience, tooltips on doc-meta */
+.doc-meta-value[data-bs-toggle="tooltip"],
+.classification-text-readonly[data-bs-toggle="tooltip"] {
+  text-overflow: ellipsis; 
+  overflow: hidden; 
+  white-space: nowrap; 
+}
+
+.copy-btn {
+  /* Remove border, background, and extra padding */
+  background: none;
+  border: none;
+  padding: 0;
+  
+  /* Match the color and size of the feedback icons, which use .text-muted by default */
+  color: #6c757d;
+  font-size: 1.0rem; /* or 1rem, whichever matches your thumbs icons exactly */
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.5rem; /* small spacing to the next icon */
+  font-weight: bold;
+}
+
+/* Hover color to match thumbs icons, which turn to primary (#0d6efd) on hover */
+.copy-btn:hover {
+  color: #0d6efd;
+}
+
+/* Ensure the icon within matches the same size as the thumbs icons */
+.copy-btn i {
+  font-size: inherit; /* same as .copy-btn's font-size */
+  font-weight: inherit;
+  margin: 0;          /* remove extra spacing */
+}
+
+.copy-code-btn i {
+  font-size: 1rem; /* match your normal icon size */
+}
+
+.copy-code-btn:hover {
+  color: #0d6efd; /* turn blue on hover, consistent with your brand */
+}
+
+.chat-input-container {
+  /* Ensures elements align nicely at their bottom edges */
+  align-items: flex-end;
+}
+#prompt-selection-container {
+  /* Prevent the container from growing vertically */
+  align-self: flex-end; /* Align item itself to bottom */
+}
+#prompt-select {
+  /* Adjust max-width as needed */
+  max-width: 250px;
+  border-radius: var(--bs-border-radius);
+  margin-bottom: 0;
+  border: none;
+  min-width: 120px;
+  padding: 0.375rem 0.75rem;
+}
+
+#model-select {
+  border: none;
+  min-width: 120px;
+  padding: 0.375rem 0.75rem;
+}
+
+#agent-select {
+  border: none;
+  min-width: 120px;
+  padding: 0.375rem 0.75rem;
+}
+
+#classification-banner {
+  border-bottom: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  z-index: 1050;
+}
+
+/* Remove left margin from navbar-nav.me-auto in top nav */
+.navbar-nav.me-auto {
+    margin-left: 0 !important;
+}
+
+/* Ensure split-container uses full viewport width in top nav mode */
+#split-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* Dark mode styles for citations */
+[data-bs-theme="dark"] .citations-container {
+  border-top-color: #495057 !important;
+}
+
+[data-bs-theme="dark"] .citations-container a:hover {
+  background-color: #495057;
+  color: #ffffff;
+}
+
+[data-bs-theme="dark"] .citation-button {
+  background-color: #343a40;
+  border-color: #495057;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .citation-button:hover {
+  background-color: #495057;
+  border-color: #6c757d;
+  color: #ffffff;
+}
+
+[data-bs-theme="dark"] .citations-container .hybrid-citation-link i,
+[data-bs-theme="dark"] .citations-container .web-citation-link i {
+  color: #adb5bd;
+}
+
+[data-bs-theme="dark"] .citation-toggle-btn {
+  color: #adb5bd;
+}
+
+[data-bs-theme="dark"] .citation-toggle-btn:hover {
+  color: #86b7fe;
+  background-color: #495057;
+  border-color: #6c757d;
+}
+
+[data-bs-theme="dark"] a.citation-link {
+  color: #86b7fe;
+}
+
+[data-bs-theme="dark"] a.citation-link:hover {
+  color: #b6d7ff;
+  background-color: #495057;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+/* ========================================
+   Markdown Table Styles for Chat Messages
+   ======================================== */
+
+/* Base table styling in message content */
+.message-text table {
+  width: 100%;
+  max-width: 100%;
+  margin: 0.75rem 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  background-color: var(--bs-body-bg);
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  font-size: 0.875rem;
+}
+
+.message-text table th,
+.message-text table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #dee2e6;
+  border-right: 1px solid #dee2e6;
+  text-align: left;
+  vertical-align: top;
+  word-wrap: break-word;
+  line-height: 1.4;
+}
+
+/* Remove right border on last cell in each row */
+.message-text table th:last-child,
+.message-text table td:last-child {
+  border-right: none;
+}
+
+/* Header styling */
+.message-text table thead th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+  color: #495057;
+  border-bottom: 2px solid #dee2e6;
+}
+
+/* Zebra striping for better readability */
+.message-text table tbody tr:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+/* Hover effect for table rows */
+.message-text table tbody tr:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+  transition: background-color 0.15s ease-in-out;
+}
+
+/* Responsive table wrapper for horizontal scrolling on small screens */
+.message-text table {
+  display: block;
+  white-space: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 768px) {
+  .message-text table {
+    display: table;
+    white-space: normal;
+  }
+}
+
+/* Text alignment classes for table cells */
+.message-text table th[align="center"],
+.message-text table td[align="center"] {
+  text-align: center;
+}
+
+.message-text table th[align="right"],
+.message-text table td[align="right"] {
+  text-align: right;
+}
+
+.message-text table th[align="left"],
+.message-text table td[align="left"] {
+  text-align: left;
+}
+
+/* Dark mode table styles */
+[data-bs-theme="dark"] .message-text table {
+  border-color: #495057;
+  background-color: var(--bs-dark);
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .message-text table th,
+[data-bs-theme="dark"] .message-text table td {
+  border-color: #495057;
+}
+
+[data-bs-theme="dark"] .message-text table thead th {
+  background-color: #343a40;
+  color: #e9ecef;
+  border-bottom-color: #495057;
+}
+
+[data-bs-theme="dark"] .message-text table tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-bs-theme="dark"] .message-text table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Code blocks within tables */
+.message-text table code {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.8em;
+}
+
+[data-bs-theme="dark"] .message-text table code {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Links within tables */
+.message-text table a {
+  color: #0d6efd;
+  text-decoration: none;
+}
+
+.message-text table a:hover {
+  color: #0a58ca;
+  text-decoration: underline;
+}
+
+[data-bs-theme="dark"] .message-text table a {
+  color: #86b7fe;
+}
+
+[data-bs-theme="dark"] .message-text table a:hover {
+  color: #b6d7ff;
+}
+
+/* Table caption styling */
+.message-text table caption {
+  padding: 0.5rem;
+  color: #6c757d;
+  text-align: left;
+  caption-side: bottom;
+  font-size: 0.8em;
+  font-style: italic;
+}
+
+[data-bs-theme="dark"] .message-text table caption {
+  color: #adb5bd;
+}

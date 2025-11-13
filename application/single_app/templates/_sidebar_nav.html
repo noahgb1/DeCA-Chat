@@ -1,0 +1,783 @@
+{# Sidebar Navigation Partial #}
+<div id="sidebar-nav" class="d-flex flex-column vh-100 bg-light border-end sidebar-expanded" style="width: 260px; min-width: 220px; position: fixed; left: 0; top: 0; z-index: 1040; transition: transform 0.3s ease;">
+  
+  <!-- Collapse/Expand button -->
+  <button type="button" id="sidebar-toggle-btn" class="btn btn-sm btn-outline-secondary position-absolute d-none d-sm-block"
+          aria-label="Toggle sidebar" title="Hide sidebar"
+          style="top: 1rem; right: 0.75rem; z-index: 1041; width: 28px; height: 28px; padding: 0; border-radius: 4px;"
+          onclick="toggleSidebar()">
+    <i id="sidebar-toggle-icon" class="bi bi-chevron-left" style="font-size: 0.875rem;"></i>
+  </button>
+  
+  <div class="p-3 border-bottom flex-shrink-0">
+    {% if app_settings.show_logo %}
+      <a class="navbar-brand d-flex align-items-center mb-2" href="{{ url_for('index') }}">
+        {% if app_settings.custom_logo_base64 or app_settings.custom_logo_dark_base64 %}
+          <!-- Light mode logo -->
+          {% if app_settings.custom_logo_base64 %}
+            <img id="sidebar-logo" src="{{ url_for('static', filename='images/custom_logo.png') }}?v={{ app_settings.logo_version | default(1) }}" 
+                 alt="Logo" height="32" class="me-2 d-light-mode-only" />
+          {% else %}
+            <img id="sidebar-logo" src="{{ url_for('static', filename='images/logo.png') }}" 
+                 alt="Logo" height="32" class="me-2 d-light-mode-only" />
+          {% endif %}
+          <!-- Dark mode logo -->
+          {% if app_settings.custom_logo_dark_base64 %}
+            <img id="sidebar-logo-dark" src="{{ url_for('static', filename='images/custom_logo_dark.png') }}?v={{ app_settings.logo_dark_version | default(1) }}" 
+                 alt="Logo" height="32" class="me-2 d-dark-mode-only" />
+          {% elif app_settings.custom_logo_base64 %}
+            <img id="sidebar-logo-dark" src="{{ url_for('static', filename='images/custom_logo.png') }}?v={{ app_settings.logo_version | default(1) }}" 
+                 alt="Logo" height="32" class="me-2 d-dark-mode-only" />
+          {% else %}
+            <img id="sidebar-logo-dark" src="{{ url_for('static', filename='images/logo.png') }}" 
+                 alt="Logo" height="32" class="me-2 d-dark-mode-only" />
+          {% endif %}
+        {% else %}
+          <img id="sidebar-logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" height="32" class="me-2" />
+        {% endif %}
+        {% if not app_settings.hide_app_title %}
+          <span id="sidebar-app-title" class="fw-bold sidebar-title-truncate" data-title="{{ app_settings.app_title }}" data-show-logo="{{ app_settings.show_logo }}" title="{{ app_settings.app_title }}">{{ app_settings.app_title }}</span>
+        {% endif %}
+      </a>
+    {% elif not app_settings.hide_app_title %}
+      <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">
+        <span id="sidebar-app-title" class="sidebar-title-truncate" data-title="{{ app_settings.app_title }}" data-show-logo="false" title="{{ app_settings.app_title }}">{{ app_settings.app_title }}</span>
+      </a>
+    {% endif %}
+  </div>
+  <div id="sidebar-content" class="flex-grow-1 d-flex flex-column" style="padding-bottom: 80px; overflow-y: auto;">
+    <ul class="nav flex-column">
+      {% if session.get('user') and session['user'].get('roles') and ('Admin' in session['user']['roles'] or 'User' in session['user']['roles']) %}
+        <li class="nav-item">
+          {% if request.endpoint == 'chats' %}
+          <button class="nav-link" id="sidebar-new-chat-btn" title="Start a new chat" style="background: none; border: none; text-align: left; width: 100%;">
+            <i class="bi bi-chat-right-text me-2"></i><span class="nav-text">New Chat</span>
+          </button>
+          {% else %}
+          <a class="nav-link" href="{{ url_for('chats') }}">
+            <i class="bi bi-chat-square-text me-2"></i><span class="nav-text">Chat</span>
+          </a>
+          {% endif %}
+        </li>
+      {% endif %}
+    </ul>
+
+    <!-- Workspaces Section - Only show when logged in -->
+    {% if session.get('user') and session['user'].get('roles') and ('Admin' in session['user']['roles'] or 'User' in session['user']['roles']) %}
+    <div class="overflow-auto">
+      <div id="workspaces-toggle" class="mt-2 mb-1 ps-3 pe-2 text-muted small d-flex align-items-center" style="font-weight: 500; letter-spacing: 0.02em; cursor: pointer; user-select: none;">
+        <span class="nav-text">Workspaces</span>
+        <i id="workspaces-caret" class="bi bi-caret-down-fill ms-2 transition" style="font-size: 0.9em; transition: transform 0.2s;"></i>
+      </div>
+      <div id="workspaces-section">
+        <ul class="nav flex-column mb-2">
+          {% if app_settings.enable_user_workspace %}
+          <li class="nav-item">
+            {% if request.endpoint == 'workspace' %}
+            <!-- Personal workspace with expandable sub-menu when on workspace page -->
+            <a class="nav-link d-flex align-items-center workspace-nav-toggle" href="#" data-target="personal-workspace-submenu">
+              <i class="bi bi-folder me-2"></i><span class="nav-text"> Personal</span>
+              <i class="bi bi-caret-right-fill ms-auto transition workspace-caret" style="font-size: 0.8em; transition: transform 0.2s;"></i>
+            </a>
+            <ul class="nav flex-column ms-3" id="personal-workspace-submenu" style="display: none; visibility: hidden;" data-submenu="personal">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center workspace-nav-tab" href="#" data-tab="documents-tab">
+                  <i class="bi bi-file-earmark-text me-2" style="font-size: 0.8em;"></i><span class="nav-text">Your Documents</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center workspace-nav-tab" href="#" data-tab="prompts-tab">
+                  <i class="bi bi-lightbulb me-2" style="font-size: 0.8em;"></i><span class="nav-text">Your Prompts</span>
+                </a>
+              </li>
+              {% if settings.per_user_semantic_kernel and settings.enable_semantic_kernel %}
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center workspace-nav-tab" href="#" data-tab="agents-tab">
+                  <i class="bi bi-robot me-2" style="font-size: 0.8em;"></i><span class="nav-text">Your Agents</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center workspace-nav-tab" href="#" data-tab="plugins-tab">
+                  <i class="bi bi-plugin me-2" style="font-size: 0.8em;"></i><span class="nav-text">Your Actions</span>
+                </a>
+              </li>
+              {% endif %}
+            </ul>
+            {% else %}
+            <!-- Regular Personal workspace link when not on workspace page -->
+            <a class="nav-link d-flex align-items-center" href="{{ url_for('workspace') }}">
+              <i class="bi bi-folder me-2"></i><span class="nav-text"> Personal</span>
+            </a>
+            {% endif %}
+          </li>
+          {% endif %}
+          {% if app_settings.enable_group_workspaces %}
+          <li class="nav-item">
+            {% if request.endpoint == 'group_workspaces' %}
+            <!-- Group workspace with expandable sub-menu when on group workspace page -->
+            <a class="nav-link d-flex align-items-center workspace-nav-toggle" href="#" data-target="group-workspace-submenu">
+              <i class="bi bi-folder me-2"></i><span class="nav-text"> Groups</span>
+              <i class="bi bi-caret-right-fill ms-auto transition workspace-caret" style="font-size: 0.8em; transition: transform 0.2s;"></i>
+            </a>
+            <ul class="nav flex-column ms-3" id="group-workspace-submenu" style="display: none; visibility: hidden;" data-submenu="group">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center workspace-nav-tab" href="#" data-tab="documents-tab">
+                  <i class="bi bi-file-earmark-text me-2" style="font-size: 0.8em;"></i><span class="nav-text">Group Documents</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center workspace-nav-tab" href="#" data-tab="prompts-tab">
+                  <i class="bi bi-lightbulb me-2" style="font-size: 0.8em;"></i><span class="nav-text">Group Prompts</span>
+                </a>
+              </li>
+            </ul>
+            {% else %}
+            <!-- Regular Groups workspace link when not on group workspace page -->
+            <a class="nav-link d-flex align-items-center" href="{{ url_for('group_workspaces') }}">
+              <i class="bi bi-folder me-2"></i><span class="nav-text"> Groups</span>
+            </a>
+            {% endif %}
+          </li>
+          {% endif %}
+          {% if app_settings.enable_public_workspaces %}
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center" href="{{ url_for('public_directory') }}">
+              <i class="bi bi-folder me-2"></i><span class="nav-text"> Public</span>
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- External Links Section - Only show when logged in and enabled -->
+    {% if session.get('user') and session['user'].get('roles') and ('Admin' in session['user']['roles'] or 'User' in session['user']['roles']) and app_settings.enable_external_links and app_settings.external_links %}
+    <div class="overflow-auto">
+      {% set should_force_menu = app_settings.external_links_force_menu %}
+      {% set link_count = app_settings.external_links|length %}
+      {% if should_force_menu or link_count >= 3 %}
+        <!-- Display as collapsible section -->
+        <div id="external-links-toggle" class="mt-2 mb-1 ps-3 pe-2 text-muted small d-flex align-items-center" style="font-weight: 500; letter-spacing: 0.02em; cursor: pointer; user-select: none;">
+          <span class="nav-text">{{ app_settings.external_links_menu_name or 'External Links' }}</span>
+          <i id="external-links-caret" class="bi bi-caret-down-fill ms-2 transition" style="font-size: 0.9em; transition: transform 0.2s;"></i>
+        </div>
+        <div id="external-links-section">
+          <ul class="nav flex-column mb-2">
+            {% for link in app_settings.external_links %}
+            <li class="nav-item">
+              <a class="nav-link d-flex align-items-center" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">
+                <i class="bi bi-box-arrow-up-right me-2" style="font-size: 0.8em;"></i>
+                <span class="nav-text">{{ link.label }}</span>
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% else %}
+        <!-- Display as individual nav items for 1-2 links -->
+        <div class="mt-2 mb-1 ps-3 pe-2 text-muted small" style="font-weight: 500; letter-spacing: 0.02em;">
+          <span class="nav-text">{{ app_settings.external_links_menu_name or 'External Links' }}</span>
+        </div>
+        <ul class="nav flex-column mb-2">
+          {% for link in app_settings.external_links %}
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">
+              <i class="bi bi-box-arrow-up-right me-2" style="font-size: 0.8em;"></i>
+              <span class="nav-text">{{ link.label }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Admin Settings Section - Only show when on admin settings page and user is admin -->
+    {% if request.endpoint == 'admin_settings' and 'Admin' in session['user']['roles'] %}
+    <div class="overflow-auto">
+      <div id="admin-settings-toggle" class="mt-2 mb-1 ps-3 pe-2 text-muted small d-flex align-items-center justify-content-between" style="font-weight: 500; letter-spacing: 0.02em; cursor: pointer; user-select: none;">
+        <div class="d-flex align-items-center">
+          <span class="nav-text">Admin Settings</span>
+          <i id="admin-settings-caret" class="bi bi-caret-down-fill ms-2 transition" style="font-size: 0.9em; transition: transform 0.2s;"></i>
+        </div>
+        <button id="admin-search-btn" class="btn btn-sm p-1" style="border: none; background: none; color: inherit;" title="Search Admin Settings">
+          <i class="bi bi-search" style="font-size: 0.9em;"></i>
+        </button>
+      </div>
+      
+      <!-- Admin Search Field -->
+      <div id="admin-search-container" class="px-3 mb-2" style="display: none;">
+        <div class="input-group input-group-sm">
+          <input type="text" id="admin-search-input" class="form-control form-control-sm" placeholder="Search admin settings..." style="font-size: 0.85em;">
+          <button class="btn btn-outline-secondary btn-sm" type="button" id="admin-search-clear">
+            <i class="bi bi-x" style="font-size: 0.8em;"></i>
+          </button>
+        </div>
+      </div>
+      <div id="admin-settings-section">
+        <ul class="nav flex-column mb-2">
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="general">
+              <i class="bi bi-gear me-2"></i><span class="nav-text">General</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="general-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="general" data-section="branding-section">
+                  <i class="bi bi-palette me-2" style="font-size: 0.8em;"></i><span class="nav-text">Branding</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="general" data-section="home-page-text-section">
+                  <i class="bi bi-house me-2" style="font-size: 0.8em;"></i><span class="nav-text">Home Page Text</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="general" data-section="appearance-section">
+                  <i class="bi bi-brush me-2" style="font-size: 0.8em;"></i><span class="nav-text">Appearance</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="general" data-section="classification-banner-section">
+                  <i class="bi bi-shield-exclamation me-2" style="font-size: 0.8em;"></i><span class="nav-text">Classification Banner</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="general" data-section="external-links-section">
+                  <i class="bi bi-box-arrow-up-right me-2" style="font-size: 0.8em;"></i><span class="nav-text">External Links</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="general" data-section="health-check-section">
+                  <i class="bi bi-heart-pulse me-2" style="font-size: 0.8em;"></i><span class="nav-text">Health Check</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="general" data-section="swagger-section">
+                  <i class="bi bi-file-earmark-code me-2" style="font-size: 0.8em;"></i><span class="nav-text">API Documentation</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="general" data-section="system-settings-section">
+                  <i class="bi bi-gear-fill me-2" style="font-size: 0.8em;"></i><span class="nav-text">System Settings</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="ai-models">
+              <i class="bi bi-cpu me-2"></i><span class="nav-text">AI Models</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="ai-models-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="ai-models" data-section="gpt-config">
+                  <i class="bi bi-chat-square-text me-2" style="font-size: 0.8em;"></i><span class="nav-text">GPT Configuration</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="ai-models" data-section="embeddings-config">
+                  <i class="bi bi-vector-pen me-2" style="font-size: 0.8em;"></i><span class="nav-text">Embeddings</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="ai-models" data-section="image-config">
+                  <i class="bi bi-image me-2" style="font-size: 0.8em;"></i><span class="nav-text">Image Generation</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="agents">
+              <i class="bi bi-robot me-2"></i><span class="nav-text">Agents</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="agents-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="agents" data-section="agents-config">
+                  <i class="bi bi-robot me-2" style="font-size: 0.8em;"></i><span class="nav-text">Agents Configuration</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="agents" data-section="actions-config">
+                  <i class="bi bi-plugin me-2" style="font-size: 0.8em;"></i><span class="nav-text">Actions Configuration</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="logging">
+              <i class="bi bi-journal-text me-2"></i><span class="nav-text">Logging</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="logging-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="logging" data-section="application-insights-section">
+                  <i class="bi bi-graph-up me-2" style="font-size: 0.8em;"></i><span class="nav-text">Application Insights</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="logging" data-section="debug-logging-section">
+                  <i class="bi bi-bug me-2" style="font-size: 0.8em;"></i><span class="nav-text">Debug Logging</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="logging" data-section="file-processing-logs-section">
+                  <i class="bi bi-file-earmark-text me-2" style="font-size: 0.8em;"></i><span class="nav-text">File Process Logging</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="scale">
+              <i class="bi bi-diagram-3 me-2"></i><span class="nav-text">Scale</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="scale-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="scale" data-section="redis-cache-section">
+                  <i class="bi bi-database me-2" style="font-size: 0.8em;"></i><span class="nav-text">Redis Cache</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="scale" data-section="front-door-section">
+                  <i class="bi bi-globe me-2" style="font-size: 0.8em;"></i><span class="nav-text">Front Door</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="workspaces">
+              <i class="bi bi-folder me-2"></i><span class="nav-text">Workspaces</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="workspaces-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="workspaces" data-section="personal-workspaces-section">
+                  <i class="bi bi-person me-2" style="font-size: 0.8em;"></i><span class="nav-text">Personal Workspaces</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="workspaces" data-section="group-workspaces-section">
+                  <i class="bi bi-people me-2" style="font-size: 0.8em;"></i><span class="nav-text">Group Workspaces</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="workspaces" data-section="public-workspaces-section">
+                  <i class="bi bi-globe me-2" style="font-size: 0.8em;"></i><span class="nav-text">Public Workspaces</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="workspaces" data-section="file-sharing-section">
+                  <i class="bi bi-share me-2" style="font-size: 0.8em;"></i><span class="nav-text">File Sharing</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="workspaces" data-section="metadata-extraction-section">
+                  <i class="bi bi-file-earmark-code me-2" style="font-size: 0.8em;"></i><span class="nav-text">Metadata Extraction</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="workspaces" data-section="document-classification-section">
+                  <i class="bi bi-tags me-2" style="font-size: 0.8em;"></i><span class="nav-text">Document Classification</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="citation">
+              <i class="bi bi-quote me-2"></i><span class="nav-text">Citations</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="citation-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="citation" data-section="standard-citations-section">
+                  <i class="bi bi-quote me-2" style="font-size: 0.8em;"></i><span class="nav-text">Standard</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="citation" data-section="enhanced-citations-section">
+                  <i class="bi bi-star me-2" style="font-size: 0.8em;"></i><span class="nav-text">Enhanced</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="safety">
+              <i class="bi bi-shield-check me-2"></i><span class="nav-text">Safety</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="safety-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="safety" data-section="content-safety-section">
+                  <i class="bi bi-shield-exclamation me-2" style="font-size: 0.8em;"></i><span class="nav-text">Content Safety</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="safety" data-section="user-feedback-section">
+                  <i class="bi bi-chat-square-heart me-2" style="font-size: 0.8em;"></i><span class="nav-text">User Feedback</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="safety" data-section="permissions-section">
+                  <i class="bi bi-person-check me-2" style="font-size: 0.8em;"></i><span class="nav-text">Permissions</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="safety" data-section="conversation-archiving-section">
+                  <i class="bi bi-archive me-2" style="font-size: 0.8em;"></i><span class="nav-text">Conversation Archiving</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center admin-nav-tab" href="#" data-tab="search-extract">
+              <i class="bi bi-search me-2"></i><span class="nav-text">Search & Extract</span>
+            </a>
+            <ul class="nav flex-column ms-3" style="display: none;" id="search-extract-submenu">
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="search-extract" data-section="azure-ai-search-section">
+                  <i class="bi bi-search me-2" style="font-size: 0.8em;"></i><span class="nav-text">Azure AI Search</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="search-extract" data-section="document-intelligence-section">
+                  <i class="bi bi-file-earmark-text me-2" style="font-size: 0.8em;"></i><span class="nav-text">Document Intelligence</span>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link d-flex align-items-center admin-nav-section" href="#" data-tab="search-extract" data-section="multimedia-support-section">
+                  <i class="bi bi-play-circle me-2" style="font-size: 0.8em;"></i><span class="nav-text">Multimedia Support</span>
+                </a>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Conversations Section - Only show on chats page -->
+    {% if request.endpoint == 'chats' %}
+    <div id="conversations-section" class="flex-grow-1 overflow-auto">
+      <div id="conversations-toggle" class="mt-2 mb-1 ps-3 pe-2 text-muted small d-flex align-items-center justify-content-between" style="font-weight: 500; letter-spacing: 0.02em; cursor: pointer; user-select: none;">
+        <div class="d-flex align-items-center">
+          <span class="nav-text">Conversations</span>
+          <i id="conversations-caret" class="bi bi-caret-down-fill ms-2 transition" style="font-size: 0.9em; transition: transform 0.2s;"></i>
+        </div>
+        <div id="conversations-actions" class="d-flex align-items-center" style="display: none !important;">
+          <button id="sidebar-delete-selected-btn" class="btn btn-sm btn-outline-danger me-1" style="display: none; padding: 2px 6px; font-size: 0.75rem; border-radius: 4px;" title="Delete selected conversations">
+            <i class="bi bi-trash-fill"></i>
+          </button>
+        </div>
+      </div>
+      <div id="conversations-list-container" class="px-2">
+        <div id="sidebar-conversations-list" class="list-group list-group-flush">
+          <div class="text-center p-2 text-muted small">Loading conversations...</div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  
+  <!-- Fixed User Account Section at Bottom -->
+  <div id="sidebar-user-account" class="border-top p-3 position-absolute bottom-0 start-0 end-0" style="background: inherit; z-index: 1050;">
+    {% if session.get('user') and session['user'].get('roles') and ('Admin' in session['user']['roles'] or 'User' in session['user']['roles']) %}
+      <div class="dropdown">
+        <a class="nav-link dropdown-toggle p-0 d-flex align-items-center w-100" href="#" id="sidebarUserDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="display: flex; align-items: center; gap: 0.5rem; min-width: 0;">
+          {% set profile_image = user_settings.get("settings", {}).get("profileImage", "") %}
+          <div id="sidebar-profile-avatar" class="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style="width: 28px; height: 28px;">
+            {% if profile_image %}
+              <!-- Render profile image directly from server data -->
+              <img src="{{ profile_image }}" alt="Profile" class="rounded-circle" style="width: 28px; height: 28px; object-fit: cover;">
+            {% else %}
+              <!-- Fallback to initials with class for JS targeting -->
+              <span class="text-white fw-bold sidebar-initials" style="font-size: 1rem;">{{ session['user'].get('name', '')[:2] }}</span>
+            {% endif %}
+          </div>
+          <div class="d-flex flex-column justify-content-center flex-grow-1" style="line-height: 1; min-width: 0;">
+            <span class="fw-semibold text-truncate" style="font-size: 1rem;" title="{{ session['user'].get('name', 'User') }}">{{ session['user'].get('name', 'User') }}</span>
+            <span class="text-muted text-truncate" style="font-size: 0.75rem;">
+              {% if 'Admin' in session['user']['roles'] %}
+                Admin account
+              {% else %}
+                Personal Account
+              {% endif %}
+            </span>
+          </div>
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="sidebarUserDropdown">
+          <li>
+            <a class="dropdown-item" href="{{ url_for('profile') }}">
+              <i class="bi bi-person-circle me-2"></i> {{ session['user'].get('name') }}
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item dark-mode-toggle" id="sidebarDarkModeToggle" role="button" href="#">
+              <span id="sidebarSwitchToDarkText">
+                <i class="bi bi-moon-fill me-2"></i>Dark Mode
+              </span>
+              <span id="sidebarSwitchToLightText" class="d-none">
+                <i class="bi bi-sun-fill me-2"></i>Light Mode
+              </span>
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item nav-layout-toggle" href="#"><i class="bi bi-window-sidebar me-2"></i>Top Nav</a>
+          </li>
+          <li><hr class="dropdown-divider"></li>
+          {% if app_settings.enable_group_workspaces %}
+          <li>
+            <a class="dropdown-item" href="{{ url_for('my_groups') }}">My Groups</a>
+          </li>
+          {% endif %}
+          {% if app_settings.enable_public_workspaces %}
+          <li>
+            <a class="dropdown-item" href="{{ url_for('my_public_workspaces') }}">My Public Workspaces</a>
+          </li>
+          {% endif %}
+          {% if app_settings.enable_user_feedback %}
+          <li>
+            <a class="dropdown-item" href="{{ url_for('my_feedback') }}">My Feedback</a>
+          </li>
+          {% endif %}
+          {% if app_settings.enable_content_safety %}
+          <li>
+            <a class="dropdown-item" href="{{ url_for('my_safety_violations') }}">My Safety Violations</a>
+          </li>
+          {% endif %}
+          {% if 'Admin' in session['user']['roles'] %}
+          <li><hr class="dropdown-divider"></li>
+          <div class="px-3 pt-2 pb-1 text-muted small" style="font-weight: 500; letter-spacing: 0.02em;">
+            Admin
+          </div>
+          <li>
+            <a class="dropdown-item" href="{{ url_for('admin_settings') }}">App Settings</a>
+          </li>
+          {% if app_settings.enable_content_safety %}
+            {% if (app_settings.require_member_of_safety_violation_admin and session.get('user') and 'SafetyViolationAdmin' in session['user']['roles']) or not app_settings.require_member_of_safety_violation_admin %}
+            <li>
+              <a class="dropdown-item" href="{{ url_for('admin_safety_violations') }}">Safety Violations</a>
+            </li>
+            {% endif %}
+          {% endif %}
+          {% if app_settings.enable_user_feedback %}
+            {% if (app_settings.require_member_of_feedback_admin and session.get('user') and 'FeedbackAdmin' in session['user']['roles']) or not app_settings.require_member_of_feedback_admin %}
+            <li>
+              <a class="dropdown-item" href="{{ url_for('admin_feedback_review') }}">Feedback Review</a>
+            </li>
+            {% endif %}
+          {% endif %}
+          {% endif %}
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <a class="dropdown-item" href="{{ url_for('logout') }}">
+              <i class="bi bi-box-arrow-right me-2"></i> Logout
+            </a>
+          </li>
+        </ul>
+      </div>
+    {% else %}
+      <a class="btn btn-outline-primary w-100" href="{{ url_for('login') }}">Login</a>
+    {% endif %}
+  </div>
+  <script>
+    // Collapsible Workspaces Section
+    document.addEventListener('DOMContentLoaded', function() {
+      var toggle = document.getElementById('workspaces-toggle');
+      var section = document.getElementById('workspaces-section');
+      var caret = document.getElementById('workspaces-caret');
+      var collapsed = false;
+      if (toggle && section && caret) {
+        toggle.addEventListener('click', function() {
+          collapsed = !collapsed;
+          section.style.display = collapsed ? 'none' : '';
+          caret.style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+        });
+      }
+
+      // Collapsible Conversations Section (for chats page)
+      var conversationsToggle = document.getElementById('conversations-toggle');
+      var conversationsContainer = document.getElementById('conversations-list-container');
+      var conversationsCaret = document.getElementById('conversations-caret');
+      var conversationsCollapsed = false;
+      if (conversationsToggle && conversationsContainer && conversationsCaret) {
+        conversationsToggle.addEventListener('click', function() {
+          conversationsCollapsed = !conversationsCollapsed;
+          conversationsContainer.style.display = conversationsCollapsed ? 'none' : '';
+          conversationsCaret.style.transform = conversationsCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+        });
+      }
+
+      // Collapsible External Links Section
+      var externalLinksToggle = document.getElementById('external-links-toggle');
+      var externalLinksSection = document.getElementById('external-links-section');
+      var externalLinksCaret = document.getElementById('external-links-caret');
+      var externalLinksCollapsed = false;
+      if (externalLinksToggle && externalLinksSection && externalLinksCaret) {
+        externalLinksToggle.addEventListener('click', function() {
+          externalLinksCollapsed = !externalLinksCollapsed;
+          externalLinksSection.style.display = externalLinksCollapsed ? 'none' : '';
+          externalLinksCaret.style.transform = externalLinksCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+        });
+      }
+    });
+
+    // Sidebar Toggle Functionality
+    function toggleSidebar() {
+      var sidebar = document.getElementById('sidebar-nav');
+      var toggleBtn = document.getElementById('sidebar-toggle-btn');
+      var toggleIcon = document.getElementById('sidebar-toggle-icon');
+      var floatingBtn = document.getElementById('floating-expand-btn');
+      var body = document.body;
+      
+      // Get all main content containers - using more comprehensive selectors
+      var allContentElements = document.querySelectorAll('.main-content, .container, .container-fluid, #main-content');
+      var mainContent = document.getElementById('main-content');
+      
+      if (sidebar.classList.contains('sidebar-expanded')) {
+        // Hide sidebar completely
+        sidebar.classList.remove('sidebar-expanded');
+        sidebar.classList.add('sidebar-collapsed');
+        body.classList.add('sidebar-collapsed');
+        
+        // Update all content areas - remove left margin when sidebar is hidden
+        allContentElements.forEach(function(element) {
+          element.style.marginLeft = '0px';
+          element.style.maxWidth = '100%';
+        });
+        // Remove sidebar-padding class from main content
+        if (mainContent) mainContent.classList.remove('sidebar-padding');
+        
+        // Hide the sidebar toggle button and show the floating button
+        toggleBtn.style.display = 'none';
+        floatingBtn.classList.remove('d-none');
+        floatingBtn.classList.add('d-block');
+        
+      } else {
+        // Show sidebar
+        sidebar.classList.remove('sidebar-collapsed');
+        sidebar.classList.add('sidebar-expanded');
+        body.classList.remove('sidebar-collapsed');
+        
+        // Remove any inline margin/maxWidth and add sidebar-padding class
+        allContentElements.forEach(function(element) {
+          element.style.marginLeft = '';
+          element.style.maxWidth = '';
+        });
+        if (mainContent) mainContent.classList.add('sidebar-padding');
+        
+        // Show the sidebar toggle button and hide the floating button
+        toggleBtn.style.display = 'block';
+        floatingBtn.classList.remove('d-block');
+        floatingBtn.classList.add('d-none');
+      }
+    }
+    
+    // Add CSS for collapsed state
+    var style = document.createElement('style');
+    style.textContent = `
+      #sidebar-nav {
+        transition: transform 0.3s ease;
+        position: relative;
+      }
+      
+      #sidebar-nav.sidebar-collapsed {
+        transform: translateX(-100%);
+      }
+      
+      /* Fixed user account section */
+      #sidebar-user-account {
+        width: 260px;
+        min-width: 220px;
+        transition: inherit;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      
+      /* Ensure user account section inherits background from sidebar */
+      #sidebar-user-account {
+        background-color: var(--bs-light, #f8f9fa) !important;
+      }
+      
+      /* Dark mode support for user account section */
+      [data-bs-theme="dark"] #sidebar-user-account {
+        background-color: var(--bs-dark, #212529) !important;
+        border-color: var(--bs-border-color-translucent, rgba(255,255,255,0.15)) !important;
+      }
+      
+      /* Smooth transitions for content area adjustments */
+      .main-content,
+      .container,
+      .container-fluid,
+      #main-content {
+        transition: margin-left 0.3s ease-in-out, max-width 0.3s ease-in-out !important;
+      }
+      
+      /* Floating expand button styles */
+      #floating-expand-btn {
+        background-color: var(--bs-body-bg, #fff) !important;
+        border: 1px solid var(--bs-border-color, #dee2e6) !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
+        color: var(--bs-body-color, #212529) !important;
+      }
+      
+      /* Dark mode styles for floating expand button */
+      [data-bs-theme="dark"] #floating-expand-btn {
+        background-color: var(--bs-dark, #212529) !important;
+        border: 1px solid var(--bs-border-color-translucent, rgba(255,255,255,0.15)) !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
+        color: var(--bs-body-color, #fff) !important;
+      }
+      
+      /* Floating expand button hover effect */
+      #floating-expand-btn:hover {
+        background-color: var(--bs-gray-100, #f8f9fa) !important;
+        transform: scale(1.05);
+        transition: all 0.2s ease;
+      }
+      
+      /* Dark mode hover effect */
+      [data-bs-theme="dark"] #floating-expand-btn:hover {
+        background-color: var(--bs-gray-800, #343a40) !important;
+      }
+      
+      /* Sidebar title truncation styles */
+      .sidebar-title-truncate {
+        display: inline-block;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        max-width: 140px; /* Default max width for no logo scenario (18 chars approx) */
+      }
+      
+      /* When logo is present, reduce max width */
+      [data-show-logo="true"].sidebar-title-truncate {
+        max-width: 80px; /* Reduced width for logo scenario (10 chars approx) */
+      }
+    `;
+    document.head.appendChild(style);
+  </script>
+</div>
+<!-- Floating expand button (shown when sidebar is collapsed) -->
+<button type="button" id="floating-expand-btn" class="btn btn-sm btn-outline-secondary d-none"
+        aria-label="Show sidebar" title="Show sidebar"
+        style="position: fixed; left: 0.5rem; top: 0.5rem; z-index: 1050; width: auto; min-width: 30px; height: 30px; padding: 3px; border-radius: 1px; display: flex; align-items: center; justify-content: center;"
+        onclick="toggleSidebar()">
+  {% if app_settings.custom_logo_base64 or app_settings.custom_logo_dark_base64 %}
+    <!-- Light mode logo -->
+    {% if app_settings.custom_logo_base64 %}
+      <img src="{{ url_for('static', filename='images/custom_logo.png') }}?v={{ app_settings.logo_version | default(1) }}" 
+           alt="Logo" height="24" style="max-width: none;" class="d-light-mode-only" />
+    {% else %}
+      <img src="{{ url_for('static', filename='images/logo.png') }}" 
+           alt="Logo" height="24" style="max-width: none;" class="d-light-mode-only" />
+    {% endif %}
+    <!-- Dark mode logo -->
+    {% if app_settings.custom_logo_dark_base64 %}
+      <img src="{{ url_for('static', filename='images/custom_logo_dark.png') }}?v={{ app_settings.logo_dark_version | default(1) }}" 
+           alt="Logo" height="24" style="max-width: none;" class="d-dark-mode-only" />
+    {% elif app_settings.custom_logo_base64 %}
+      <img src="{{ url_for('static', filename='images/custom_logo.png') }}?v={{ app_settings.logo_version | default(1) }}" 
+           alt="Logo" height="24" style="max-width: none;" class="d-dark-mode-only" />
+    {% else %}
+      <img src="{{ url_for('static', filename='images/logo.png') }}" 
+           alt="Logo" height="24" style="max-width: none;" class="d-dark-mode-only" />
+    {% endif %}
+  {% else %}
+    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" height="24" style="max-width: none;" />
+  {% endif %}
+</button>

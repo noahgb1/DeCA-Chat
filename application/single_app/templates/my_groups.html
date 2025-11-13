@@ -1,0 +1,511 @@
+<!-- templates/my_groups.html -->
+
+{% extends "base.html" %}
+{% block title %}
+  My Groups - {{ app_settings.app_title}}
+{% endblock %}
+
+{% block head %}
+<style>
+    /* Consistent table styling */
+    #my-groups-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    /* Example Column Widths */
+    #my-groups-table th:nth-child(1), /* Name */
+    #my-groups-table td:nth-child(1) {
+        width: 40%;
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    #my-groups-table th:nth-child(2), /* Role */
+    #my-groups-table td:nth-child(2) { width: 15%; }
+    #my-groups-table th:nth-child(3), /* Active Workspace */
+    #my-groups-table td:nth-child(3) { width: 20%; text-align: center; }
+    #my-groups-table th:nth-child(4), /* Actions */
+    #my-groups-table td:nth-child(4) { width: 15%; text-align: center; }
+
+    #my-groups-table td {
+        vertical-align: middle;
+    }
+    .table-loading-row td {
+        text-align: center; padding: 2rem; color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="container">
+  <h2>My Groups</h2>
+  <p class="text-muted">View and manage the groups you are a member of. Use search to find specific groups.</p>
+  <hr/>
+
+  <div class="row mb-3 gy-2">
+      {% if can_create_groups %}
+      <div class="col-md-auto">
+          <!-- Create Group Button trigger modal -->
+          <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+              <i class="bi bi-plus-circle-fill me-1"></i> Create New Group
+          </button>
+      </div>
+      {% endif %}
+      <div class="col-md-auto">
+          <!-- Find Group Button trigger modal -->
+          <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#findGroupModal">
+              <i class="bi bi-search me-1"></i> Find Group to Join
+          </button>
+      </div>
+
+      <!-- Search form -->
+      <div class="col-md">
+          <div class="input-group input-group-sm">
+              <input class="form-control" type="search" placeholder="Search my groups by name or description..." aria-label="Search" id="searchQueryInput"/>
+              <button class="btn btn-primary" type="button" id="searchGroupsBtn">Search</button>
+              <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn">Clear</button>
+          </div>
+      </div>
+  </div>
+
+
+  <!-- Group List Table -->
+  <div class="table-responsive">
+      <table id="my-groups-table" class="table table-striped table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Your Role</th>
+            <th>Active Workspace</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Populated by JS -->
+          <tr class="table-loading-row">
+              <td colspan="4">
+                  <div class="spinner-border spinner-border-sm me-2" role="status"><span class="visually-hidden">Loading...</span></div>
+                  Loading your groups...
+              </td>
+          </tr>
+        </tbody>
+      </table>
+  </div>
+
+   <!-- PAGINATION & PAGE SIZE CONTROLS -->
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <!-- Page Size Section -->
+    <div>
+      <label for="page-size-select" class="visually-hidden">Items per page:</label>
+      <select id="page-size-select" class="form-select form-select-sm d-inline-block" style="width:auto;">
+        <option value="10" selected>10</option>
+        <option value="20">20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+      <span class="ms-1 small text-muted">items per page</span>
+    </div>
+    <!-- Pagination Controls -->
+    <div id="pagination-container" class="d-flex gap-1 ms-auto">
+        <!-- Populated by JS -->
+    </div>
+  </div>
+
+</div> <!-- End Container -->
+
+<!-- Create Group Modal -->
+{% if can_create_groups %}
+<!-- Keep Modal Structure As Is -->
+<div class="modal fade" id="createGroupModal" tabindex="-1" aria-labelledby="createGroupModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="createGroupForm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="createGroupModalLabel">Create a New Group</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="groupName" class="form-label">Group Name</label>
+            <input type="text" class="form-control" id="groupName" required />
+          </div>
+          <div class="mb-3">
+            <label for="groupDescription" class="form-label">Description</label>
+            <textarea class="form-control" id="groupDescription"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" id="createGroupSubmitBtn" class="btn btn-primary">Create</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Find Group Modal -->
+<!-- Keep Modal Structure As Is, maybe update search button ID -->
+<div class="modal fade" id="findGroupModal" tabindex="-1" aria-labelledby="findGroupModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="findGroupModalLabel">Find a Group to Join</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="input-group mb-2">
+          <input type="text" class="form-control" id="globalGroupSearchInput" placeholder="Search all public groups..."/>
+          <button class="btn btn-outline-secondary" type="button" id="globalGroupSearchBtn">Search</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover" id="globalGroupResultsTable">
+            <thead><tr><th>Name</th><th>Description</th><th>Owner</th><th>Members</th><th>Actions</th></tr></thead>
+            <tbody>
+                <tr><td colspan="5" class="text-center text-muted">Enter search term and click Search.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }} <!-- Keep this if base.html includes scripts -->
+<script>
+  // Helper function
+  function escapeHtml(unsafe) {
+    if (unsafe === null || typeof unsafe === 'undefined') {
+        return '';
+    }
+    return unsafe
+         .toString()
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+  }
+
+  // State variables
+  let currentPage = 1;
+  let pageSize = 10;
+  let currentSearchQuery = ""; // Store the current search term
+  const canCreateGroups = {{ can_create_groups|tojson }}; // Pass permission from backend
+
+  // DOM Elements (jQuery)
+  const tableBody = $("#my-groups-table tbody");
+  const paginationContainer = $("#pagination-container");
+  const pageSizeSelect = $("#page-size-select");
+  const searchInput = $("#searchQueryInput");
+  const searchBtn = $("#searchGroupsBtn");
+  const clearSearchBtn = $("#clearSearchBtn");
+  const createGroupModal = canCreateGroups ? new bootstrap.Modal(document.getElementById('createGroupModal')) : null;
+  const findGroupModal = new bootstrap.Modal(document.getElementById('findGroupModal')); // Keep reference if needed
+
+  // --- DATA FETCHING & RENDERING ---
+  function fetchMyGroups() {
+    // Show loading state
+    tableBody.html(`
+        <tr class="table-loading-row">
+            <td colspan="4">
+                <div class="spinner-border spinner-border-sm me-2" role="status"><span class="visually-hidden">Loading...</span></div>
+                Loading your groups...
+            </td>
+        </tr>
+    `);
+    paginationContainer.empty();
+
+    currentSearchQuery = searchInput.val().trim(); // Update search query state
+
+    const params = new URLSearchParams({
+        page: currentPage,
+        page_size: pageSize,
+    });
+    if (currentSearchQuery) {
+        params.append('search', currentSearchQuery);
+    }
+
+    $.get(`/api/groups?${params.toString()}`)
+      .done(function(data) {
+        tableBody.empty();
+        const groups = data.groups || [];
+        if (groups.length > 0) {
+          groups.forEach(group => renderGroupRow(group));
+        } else if (currentSearchQuery) {
+           tableBody.html('<tr><td colspan="4" class="text-center p-4 text-muted">No groups found matching your search.</td></tr>');
+        } else {
+           tableBody.html(`
+                <tr><td colspan="4" class="text-center p-4 text-muted">
+                    You are not a member of any group. You can create one or find one to join.
+                </td></tr>
+            `);
+        }
+        renderPaginationControls(data.page, data.page_size, data.total_count);
+      })
+      .fail(function(jqXHR, textStatus, errorThrown) {
+        console.error("Error fetching your groups:", textStatus, errorThrown);
+        const errorMsg = jqXHR.responseJSON?.error || errorThrown || 'Unknown error';
+        tableBody.html(`<tr><td colspan="4" class="text-center text-danger p-4">Error loading groups: ${escapeHtml(errorMsg)}</td></tr>`);
+        renderPaginationControls(1, pageSize, 0);
+      });
+  }
+
+  function renderGroupRow(group) {
+    const row = $("<tr></tr>");
+
+    row.append($("<td></td>").attr('title', group.name).text(group.name));
+    row.append($("<td></td>").text(group.userRole || "User"));
+
+    // Active Workspace Button
+    const activeCell = $("<td class='text-center'></td>");
+    if (group.isActive) {
+        activeCell.append('<span class="badge bg-primary">Active</span>'); // Use badge for active
+    } else {
+        const setActiveBtn = $("<button class='btn btn-sm btn-outline-secondary set-active-btn'></button>")
+                             .attr('data-group-id', group.id)
+                             .text('Set Active');
+        activeCell.append(setActiveBtn);
+    }
+    row.append(activeCell);
+
+    // Actions Cell
+    const manageLink = $("<a></a>").addClass('btn btn-sm btn-secondary')
+                       .attr('href', `/groups/${group.id}`)
+                       .attr('title', 'Manage Group Settings & Members')
+                       .html('<i class="bi bi-gear-fill"></i> Manage'); // Add icon
+    row.append($("<td class='text-center'></td>").append(manageLink));
+
+    tableBody.append(row);
+  }
+
+   // --- PAGINATION CONTROL RENDERING (Standard function) ---
+   function renderPaginationControls(page, pageSize, totalCount) {
+        paginationContainer.empty();
+        const totalPages = Math.ceil(totalCount / pageSize);
+        if (totalPages <= 1) return;
+        const createPageLink = (pageNum, text, isDisabled = false, isActive = false) => { /* ... standard link creation ... */
+            const li = $('<li>').addClass('page-item'); if (isDisabled) li.addClass('disabled'); if (isActive) li.addClass('active');
+            const a = $('<a>').addClass('page-link').attr('href', '#').html(text);
+            if (!isDisabled && !isActive) { a.on('click', (e) => { e.preventDefault(); currentPage = pageNum; fetchMyGroups(); }); }
+            else if (isActive) { li.attr('aria-current', 'page'); } li.append(a); return li;
+        };
+        const ul = $('<ul>').addClass('pagination pagination-sm mb-0'); ul.append(createPageLink(page - 1, '«', page <= 1));
+        const maxPg = 5; let stPg = 1, endPg = totalPages; if (totalPages > maxPg) { let mid = Math.floor(maxPg / 2); if (page > mid) stPg = page - mid; endPg = stPg + maxPg - 1; if (endPg > totalPages) { endPg = totalPages; stPg = endPg - maxPg + 1; } }
+        if (stPg > 1) { ul.append(createPageLink(1, '1')); if (stPg > 2) ul.append($('<li>').addClass('page-item disabled').html('<span class="page-link">...</span>')); }
+        for (let p = stPg; p <= endPg; p++) { ul.append(createPageLink(p, p, false, p === page)); }
+        if (endPg < totalPages) { if (endPg < totalPages - 1) ul.append($('<li>').addClass('page-item disabled').html('<span class="page-link">...</span>')); ul.append(createPageLink(totalPages, totalPages)); }
+        ul.append(createPageLink(page + 1, '»', page >= totalPages)); paginationContainer.append(ul);
+    }
+
+  // --- ACTION HANDLERS ---
+  function setActiveWorkspace(groupId, buttonElement) {
+      // Disable button temporarily
+      const originalHtml = buttonElement.html();
+      buttonElement.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>');
+
+      $.ajax({
+        url: "/api/groups/setActive",
+        method: "PATCH",
+        contentType: "application/json",
+        data: JSON.stringify({ groupId }),
+        success: function (data) {
+            fetchMyGroups(); // Refresh the table to show the new active group
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+            console.error("Failed to set active workspace:", errorThrown);
+            const errorMsg = jqXHR.responseJSON?.error || errorThrown || 'Unknown error';
+            alert("Failed to set active workspace: " + escapeHtml(errorMsg));
+            // Restore button on error
+            buttonElement.prop('disabled', false).html(originalHtml);
+        }
+        // No need for finally, success refreshes the whole table including the button state
+      });
+  }
+
+   // --- MODAL: Create Group ---
+  function handleCreateGroup(event) {
+      event.preventDefault();
+      const name = $("#groupName").val().trim();
+      const description = $("#groupDescription").val().trim();
+      const submitButton = $("#createGroupSubmitBtn");
+      const originalButtonText = submitButton.text();
+
+      if (!name) {
+          alert("Group Name is required.");
+          return;
+      }
+
+      submitButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Creating...');
+
+      $.ajax({
+        url: "/api/groups",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ name, description }),
+        success: function (data) {
+          createGroupModal.hide();
+          $("#createGroupForm")[0].reset(); // Reset form fields
+          fetchMyGroups(); // Refresh group list (will show the new group)
+          // Optional: Show success message
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+          console.error("Error creating group:", errorThrown);
+          const errorMsg = jqXHR.responseJSON?.error || errorThrown || 'Unknown error';
+          alert("Error creating group: " + escapeHtml(errorMsg));
+        },
+        complete: function() {
+             submitButton.prop('disabled', false).text(originalButtonText);
+        }
+      });
+  }
+
+  // --- MODAL: Find Group (Existing Logic - Keep or Adapt) ---
+  function searchAllGroups(searchTerm) {
+    let url = "/api/groups/discover";
+    if (searchTerm) { url += "?search=" + encodeURIComponent(searchTerm); }
+    const resultsBody = $("#globalGroupResultsTable tbody");
+    resultsBody.html('<tr><td colspan="3" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div> Searching...</td></tr>');
+
+    $.get(url)
+      .done(function (data) { renderGlobalGroupResults(data); })
+      .fail(function (jqXHR, textStatus, errorThrown) {
+        console.error("Error loading global groups:", errorThrown);
+        const errorMsg = jqXHR.responseJSON?.error || errorThrown || 'Unknown error';
+        resultsBody.html(`<tr><td colspan="5" class="text-center text-danger">Error: ${escapeHtml(errorMsg)}</td></tr>`);
+      });
+  }
+
+  function renderGlobalGroupResults(groups) {
+    const tbody = $("#globalGroupResultsTable tbody");
+    tbody.empty();
+    if (!groups || groups.length === 0) {
+      tbody.html(`<tr><td colspan="5" class="text-center text-muted">No groups found matching your search.</td></tr>`); return;
+    }
+    groups.forEach((g) => {
+      const row = $("<tr></tr>");
+      row.append($("<td></td>").text(g.name));
+      row.append($("<td></td>").text(g.description));
+      
+      // Owner column
+      const ownerName = g.owner?.displayName || g.owner?.email || 'Unknown';
+      row.append($("<td></td>").text(ownerName));
+      
+      // Member count column
+      row.append($("<td></td>").text(g.member_count || 0));
+      
+      // Actions column
+      const joinBtn = $("<button class='btn btn-sm btn-primary join-request-btn'></button>")
+                      .attr('data-group-id', g.id)
+                      .text('Request to Join');
+      row.append($("<td></td>").append(joinBtn));
+      tbody.append(row);
+    });
+  }
+
+  function requestToJoin(groupId, buttonElement) {
+      const originalButtonText = buttonElement.text();
+      buttonElement.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...');
+
+      $.ajax({
+        url: `/api/groups/${encodeURIComponent(groupId)}/requests`,
+        method: "POST",
+        success: function (response) {
+          alert("Join request sent successfully!");
+          buttonElement.removeClass('btn-primary').addClass('btn-outline-secondary').text('Request Sent');
+          // Keep it disabled or re-enable after a delay if desired
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+          console.error("Error requesting to join:", errorThrown);
+          const errorMsg = jqXHR.responseJSON?.error || errorThrown || 'Unknown error';
+          alert("Failed to request join: " + escapeHtml(errorMsg));
+          buttonElement.prop('disabled', false).text(originalButtonText); // Re-enable on error
+        }
+        // Note: No 'complete' needed if success handles button state sufficiently
+      });
+  }
+
+  // --- EVENT LISTENERS ---
+  $(document).ready(function () {
+    // Initial fetch
+    pageSize = parseInt(pageSizeSelect.val(), 10);
+    fetchMyGroups();
+
+    // Page size change
+    pageSizeSelect.on("change", function () {
+      pageSize = parseInt($(this).val(), 10);
+      currentPage = 1;
+      fetchMyGroups();
+    });
+
+    // Search button click
+    searchBtn.on("click", function () {
+      currentPage = 1; // Reset to page 1 for new search
+      fetchMyGroups();
+    });
+
+    // Search input enter key
+    searchInput.on("keypress", function(e) {
+        if (e.which == 13) { // Enter key pressed
+            e.preventDefault(); // Prevent form submission
+            currentPage = 1;
+            fetchMyGroups();
+        }
+    });
+
+
+    // Clear search button click
+    clearSearchBtn.on("click", function () {
+      searchInput.val(""); // Clear the input field
+      currentPage = 1;
+      fetchMyGroups();
+    });
+
+    // Create Group form submission (only if user has permission)
+    if (canCreateGroups) {
+      $("#createGroupForm").on("submit", handleCreateGroup);
+    }
+
+    // --- Event Delegation for Table Buttons ---
+    tableBody.on("click", ".set-active-btn", function() {
+        const groupId = $(this).data('group-id');
+        if(groupId) {
+            setActiveWorkspace(groupId, $(this)); // Pass button element
+        }
+    });
+
+    // --- Find Group Modal Logic ---
+    $("#globalGroupSearchBtn").on("click", function () {
+      const term = $("#globalGroupSearchInput").val().trim();
+      searchAllGroups(term);
+    });
+    $("#globalGroupSearchInput").on("keypress", function(e) {
+        if (e.which == 13) { // Enter key pressed
+            e.preventDefault();
+            searchAllGroups($(this).val().trim());
+        }
+    });
+
+    $("#findGroupModal").on("show.bs.modal", function () {
+      $("#globalGroupSearchInput").val("");
+      $("#globalGroupResultsTable tbody").html('<tr><td colspan="5" class="text-center text-muted">Enter search term and select Search. To view all groups, clear search input and select Search</td></tr>');
+      // Optionally trigger an initial empty search: searchAllGroups("");
+    });
+
+    // Event delegation for "Request to Join" buttons within the modal
+    $("#globalGroupResultsTable tbody").on("click", ".join-request-btn", function() {
+         const groupId = $(this).data('group-id');
+        if(groupId) {
+            requestToJoin(groupId, $(this)); // Pass button element
+        }
+    });
+
+  });
+</script>
+{% endblock %}
