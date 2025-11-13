@@ -1,0 +1,14 @@
+{
+    "id": "<user-id>",
+    "settings": {
+      "activeGroupOid": "<group-id>",
+      "lastUpdated": "<iso-timestamp>",
+      "splitSizesPreference": [
+        27.72,
+        72.28
+      ],
+      "layoutPreference": "docked"
+    },
+    "lastUpdated": "<iso-timestamp>"
+  }
+  

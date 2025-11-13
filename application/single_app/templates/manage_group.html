@@ -1,0 +1,344 @@
+<!-- templates/manage_group.html -->
+ 
+{% extends "base.html" %}
+{% block title %}
+  Manage Group - {{app_settings.app_title }}
+{% endblock %}
+{% block content %}
+
+<div class="container">
+  <h2>Manage Group</h2>
+  <form method="POST" action="/set_active_group" style="display:inline;">
+    <input type="hidden" name="group_id" value="{{ group_id }}">
+    <button type="submit" class="btn btn-outline-primary btn-sm mb-3">Go to Group Workspace</button>
+  </form>
+  <div id="groupInfoContainer" class="mb-3">
+    <!-- Group name, description, etc. loaded via JS -->
+  </div>
+
+  <!-- If user is Owner, show "Owner Actions" -->
+  <div id="ownerActionsContainer" style="display: none">
+    <h5>Owner Actions</h5>
+    <!-- Transfer Ownership Button -->
+    <button class="btn btn-warning btn-sm" id="transferOwnershipBtn">
+      Transfer Ownership
+    </button>
+    <!-- Delete Group Button -->
+    <button class="btn btn-danger btn-sm" id="deleteGroupBtn">
+      Delete Group
+    </button>
+  </div>
+
+  <!-- If user is Owner, show update form -->
+  <div id="editGroupContainer" class="mb-3" style="display: none">
+    <h5>Edit Group</h5>
+    <form id="editGroupForm">
+      <div class="mb-2">
+        <label for="editGroupName" class="form-label">Group Name</label>
+        <input type="text" class="form-control" id="editGroupName" />
+      </div>
+      <div class="mb-2">
+        <label for="editGroupDescription" class="form-label">Description</label>
+        <textarea class="form-control" id="editGroupDescription"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+    </form>
+  </div>
+
+  <!-- If user is NOT owner, show “Leave Group” button -->
+  <div id="leaveGroupContainer" class="mb-3" style="display: none">
+    <button class="btn btn-danger btn-sm" id="leaveGroupBtn">
+      Leave Group
+    </button>
+  </div>
+
+  <hr />
+
+  <div>
+    <h5>Membership</h5>
+
+    <!-- Member Search/Filter Controls -->
+    <div class="row mb-2">
+      <div class="col-auto">
+        <input
+          type="text"
+          id="memberSearchInput"
+          class="form-control form-control-sm"
+          placeholder="Search members..."
+        />
+      </div>
+      <div class="col-auto">
+        <select id="memberRoleFilter" class="form-select form-select-sm">
+          <option value="">All Roles</option>
+          <option value="Admin">Admin</option>
+          <option value="DocumentManager">Document Manager</option>
+          <option value="User">User</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button
+          type="button"
+          class="btn btn-sm btn-secondary"
+          id="memberSearchBtn"
+        >
+          Search
+        </button>
+      </div>
+    </div>
+
+    <table class="table table-sm" id="membersTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Filled by JS loadMembers() -->
+      </tbody>
+    </table>
+
+    <!-- Add member button (Owner/Admin only) -->
+    <button
+      class="btn btn-success btn-sm mb-3"
+      id="addMemberBtn"
+      style="display: none"
+    >
+      Add Member
+    </button>
+  </div>
+
+  <div id="pendingRequestsSection" style="display: none">
+    <h5>Pending Requests</h5>
+    <table class="table table-sm" id="pendingRequestsTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Member Modal (Owner/Admin only) -->
+<div class="modal fade" id="addMemberModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="addMemberForm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Add Member Directly</h5>
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="Close"
+          ></button>
+        </div>
+        <div class="modal-body">
+          <!-- Search Section -->
+          <div class="mb-3">
+            <label for="userSearchTerm" class="form-label"
+              >Search for user (by name or email)</label
+            >
+            <input
+              type="text"
+              class="form-control"
+              id="userSearchTerm"
+              placeholder="e.g. John or jsmith@contoso.com"
+            />
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm mt-2"
+              id="searchUsersBtn"
+            >
+              Search
+            </button>
+            <!-- Optional: a small status label -->
+            <span id="searchStatus" class="text-muted ms-2"></span>
+          </div>
+
+          <!-- Search Results Table -->
+          <div
+            class="table-responsive mb-3"
+            style="max-height: 200px; overflow: auto"
+          >
+            <table class="table table-sm" id="userSearchResultsTable">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Populated by renderUserSearchResults() -->
+              </tbody>
+            </table>
+          </div>
+
+          <hr />
+
+          <p class="text-muted mb-2">Or fill in user details manually:</p>
+
+          <div class="mb-2">
+            <label for="newUserId" class="form-label"
+              >User ID (AAD Object ID)</label
+            >
+            <input type="text" class="form-control" id="newUserId" required />
+          </div>
+          <div class="mb-2">
+            <label for="newUserDisplayName" class="form-label">Name</label>
+            <input type="text" class="form-control" id="newUserDisplayName" />
+          </div>
+          <div class="mb-2">
+            <label for="newUserEmail" class="form-label">Email</label>
+            <input type="email" class="form-control" id="newUserEmail" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-bs-dismiss="modal"
+          >
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary btn-sm">Add</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Change Role Modal -->
+<div class="modal fade" id="changeRoleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="changeRoleForm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Change Member Role</h5>
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="Close"
+          ></button>
+        </div>
+        <div class="modal-body">
+          <!-- Hidden field to track which user we're updating -->
+          <input type="hidden" id="roleChangeUserId" />
+          <div class="mb-3">
+            <label for="roleSelect" class="form-label">Select Role</label>
+            <select id="roleSelect" class="form-select">
+              <option value="Admin">Admin</option>
+              <option value="DocumentManager">Document Manager</option>
+              <option value="User">User</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-bs-dismiss="modal"
+          >
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Transfer Ownership Modal -->
+<div class="modal fade" id="transferOwnershipModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form id="transferOwnershipForm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Transfer Ownership</h5>
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+          ></button>
+        </div>
+        <div class="modal-body">
+          <p>Select a member to make the new owner:</p>
+          <select id="newOwnerSelect" class="form-select">
+            <!-- Will fill with members who are not the current owner. -->
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-bs-dismiss="modal"
+          >
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary btn-sm">Transfer</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Delete Group Warning Modal (if documents exist) -->
+<div
+  class="modal fade"
+  id="deleteGroupWarningModal"
+  tabindex="-1"
+  aria-hidden="true"
+>
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Cannot Delete Group Yet</h5>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body" id="deleteGroupWarningBody">
+        <!-- We'll insert "This group has X documents" dynamically via JS -->
+      </div>
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          data-bs-dismiss="modal"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn-danger btn-sm"
+          id="acknowledgeDocsBtn"
+          data-bs-dismiss="modal"
+        >
+          I Understand
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} 
+
+{% block scripts %}
+
+<script>
+  // Inline the real group ID from Jinja
+  const groupId = "{{ group_id }}"; // This will become the real UUID
+  const userId = "{{ session['user'].get('oid') }}";
+</script>
+
+<script src="{{ url_for('static', filename='js/group/manage_group.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,402 @@
+<!-- templates/my_feedback.html -->
+
+{% extends "base.html" %}
+{% block title %}
+  My Feedback - {{ app_settings.app_title }}
+{% endblock %}
+
+{% block head %}
+<style>
+    /* Force fixed layout */
+    #my-feedback-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    /* Column Widths - Make consistent with other tables where possible */
+    #my-feedback-table th:nth-child(1), /* Timestamp */
+    #my-feedback-table td:nth-child(1) { width: 160px; }
+    #my-feedback-table th:nth-child(2), /* Prompt */
+    #my-feedback-table td:nth-child(2) {
+        width: 15%;
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    #my-feedback-table th:nth-child(3), /* AI Response */
+    #my-feedback-table td:nth-child(3) {
+        width: 15%;
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    #my-feedback-table th:nth-child(4), /* Feedback */
+    #my-feedback-table td:nth-child(4) { width: 90px; }
+    #my-feedback-table th:nth-child(5), /* Reason */
+    #my-feedback-table td:nth-child(5) {
+        width: 15%;
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    #my-feedback-table th:nth-child(6), /* Acknowledged */
+    #my-feedback-table td:nth-child(6) { width: 110px; }
+    #my-feedback-table th:nth-child(7), /* Analysis Notes */
+    #my-feedback-table td:nth-child(7) {
+        width: 15%;
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    #my-feedback-table th:nth-child(8), /* Response to User */
+    #my-feedback-table td:nth-child(8) {
+        width: 15%;
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    #my-feedback-table th:nth-child(9), /* Action Taken */
+    #my-feedback-table td:nth-child(9) {
+        width: 10%;
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    #my-feedback-table th:nth-child(10), /* Details */
+    #my-feedback-table td:nth-child(10) {
+         width: 70px; /* Consistent width */
+         text-align: center;
+    }
+
+     /* Ensure table cells align middle */
+    #my-feedback-table td {
+        vertical-align: middle;
+    }
+
+    /* Style for loading state */
+    .table-loading-row td {
+        text-align: center;
+        padding: 2rem;
+        color: #6c757d; /* text-muted */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="container">
+  <h2>My Feedback</h2>
+  <p class="text-muted">
+    Below is a list of all feedback you have submitted. Use the filters and 'View' button for more details.
+  </p>
+  <hr />
+
+  <!-- FILTERS ROW - Added Apply/Clear buttons -->
+  <div class="row mb-3 align-items-end">
+    <div class="col-md-3">
+      <label for="filterFeedbackType" class="form-label mb-1">Filter by Feedback Type:</label>
+      <select id="filterFeedbackType" class="form-select form-select-sm">
+        <option value="">(All)</option>
+        <option value="Positive">Positive</option>
+        <option value="Negative">Negative</option>
+        <option value="Neutral">Neutral</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label for="filterAcknowledged" class="form-label mb-1">Filter by Acknowledged:</label>
+      <select id="filterAcknowledged" class="form-select form-select-sm">
+        <option value="">(All)</option>
+        <option value="true">Acknowledged</option>
+        <option value="false">Not Acknowledged</option>
+      </select>
+    </div>
+     <div class="col-md-6 text-md-end mt-2 mt-md-0">
+         <button id="applyFiltersBtn" class="btn btn-primary btn-sm">Apply Filters</button>
+         <button id="clearFiltersBtn" class="btn btn-secondary btn-sm ms-1">Clear Filters</button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-responsive">
+    <table id="my-feedback-table" class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Prompt</th>
+          <th>AI Response</th>
+          <th>Feedback</th>
+          <th>Reason</th>
+          <th>Acknowledged</th>
+          <th>Admin Notes</th> 
+          <th>Admin Response</th> 
+          <th>Admin Action</th> 
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Populated by JS -->
+         <tr class="table-loading-row">
+            <td colspan="10">
+                <div class="spinner-border spinner-border-sm me-2" role="status"><span class="visually-hidden">Loading...</span></div>
+                Loading your feedback...
+            </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+   <!-- PAGINATION & PAGE SIZE CONTROLS - Added -->
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <!-- Page Size Section -->
+    <div>
+      <label for="page-size-select" class="visually-hidden">Items per page:</label>
+      <select id="page-size-select" class="form-select form-select-sm d-inline-block" style="width:auto;">
+        <option value="10" selected>10</option>
+        <option value="20">20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+      <span class="ms-1 small text-muted">items per page</span>
+    </div>
+    <!-- Pagination Controls -->
+    <div id="pagination-container" class="d-flex gap-1 ms-auto">
+        <!-- Populated by JS -->
+    </div>
+  </div>
+
+</div> <!-- End Container -->
+
+<!-- ===== Modal to View a Single Feedback Entry in Detail ===== -->
+<!-- Keep existing modal structure, maybe update labels -->
+<div class="modal fade" id="viewFeedbackModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Feedback Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-bold">Timestamp:</label>
+          <p id="detailTimestamp" class="form-control-plaintext"></p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Your Prompt:</label>
+          <p id="detailPrompt" class="form-control-plaintext" style="white-space: pre-wrap;"></p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">AI Response Received:</label>
+          <p id="detailAiResponse" class="form-control-plaintext" style="white-space: pre-wrap;"></p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Your Feedback:</label>
+          <p id="detailFeedbackType" class="form-control-plaintext"></p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Your Reason:</label>
+          <p id="detailReason" class="form-control-plaintext" style="white-space: pre-wrap;"></p>
+        </div>
+        <hr/>
+        <h6 class="text-muted mb-3">Admin Review Information</h6>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Acknowledged by Admin:</label>
+          <p id="detailAcknowledged" class="form-control-plaintext"></p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Admin Analysis Notes:</label>
+          <p id="detailAnalysisNotes" class="form-control-plaintext" style="white-space: pre-wrap;"></p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Admin Response to You:</label>
+          <p id="detailResponseToUser" class="form-control-plaintext" style="white-space: pre-wrap;"></p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Admin Action Taken:</label>
+          <p id="detailActionTaken" class="form-control-plaintext"></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Using jQuery for consistency with other updated pages -->
+<!-- <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> -->
+<!-- Assumes Bootstrap JS is in base.html -->
+<script>
+  // Helper function
+  function escapeHtml(unsafe) {
+    if (unsafe === null || typeof unsafe === 'undefined') return '';
+    return unsafe.toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+  }
+
+  // State variables
+  let currentPage = 1;
+  let pageSize = 10;
+  let feedbackItemsOnPage = []; // Store feedback for the current page
+
+  // DOM Elements (using jQuery)
+  const tableBody = $("#my-feedback-table tbody");
+  const paginationContainer = $("#pagination-container");
+  const pageSizeSelect = $("#page-size-select");
+  const filterTypeSelect = $("#filterFeedbackType");
+  const filterAckSelect = $("#filterAcknowledged");
+  const applyFiltersBtn = $("#applyFiltersBtn");
+  const clearFiltersBtn = $("#clearFiltersBtn");
+  const viewModal = new bootstrap.Modal(document.getElementById('viewFeedbackModal'));
+
+  // --- DATA FETCHING & RENDERING ---
+  function fetchMyFeedback() {
+    // Show loading state
+    tableBody.html(`
+        <tr class="table-loading-row">
+            <td colspan="10">
+                <div class="spinner-border spinner-border-sm me-2" role="status"><span class="visually-hidden">Loading...</span></div>
+                Loading your feedback...
+            </td>
+        </tr>
+    `);
+    paginationContainer.empty();
+
+    const feedbackTypeFilter = filterTypeSelect.val();
+    const acknowledgedFilter = filterAckSelect.val();
+
+    const params = new URLSearchParams({
+        page: currentPage,
+        page_size: pageSize,
+    });
+    if (feedbackTypeFilter) params.append('type', feedbackTypeFilter);
+    if (acknowledgedFilter) params.append('ack', acknowledgedFilter);
+
+    $.get(`/feedback/my?${params.toString()}`)
+      .done(function(data) {
+        tableBody.empty(); // Clear loading
+        feedbackItemsOnPage = data.feedback || []; // Store current page data
+        if (feedbackItemsOnPage.length > 0) {
+          feedbackItemsOnPage.forEach(item => renderFeedbackRow(item));
+        } else {
+          tableBody.html('<tr><td colspan="10" class="text-center p-4 text-muted">No feedback found matching the criteria.</td></tr>');
+        }
+        renderPaginationControls(data.page, data.page_size, data.total_count);
+      })
+      .fail(function(jqXHR, textStatus, errorThrown) {
+        console.error("Error fetching your feedback:", textStatus, errorThrown);
+        const errorMsg = jqXHR.responseJSON?.error || errorThrown || 'Unknown error';
+        tableBody.html(`<tr><td colspan="10" class="text-center text-danger p-4">Error loading feedback: ${escapeHtml(errorMsg)}</td></tr>`);
+        renderPaginationControls(1, pageSize, 0);
+      });
+  }
+
+  function renderFeedbackRow(item) {
+    const row = $("<tr></tr>");
+    const adminReview = item.adminReview || {};
+    const ackText = adminReview.acknowledged ? "Yes" : "No";
+    const timestampStr = item.timestamp ? new Date(item.timestamp).toLocaleString() : "N/A";
+
+    // Use .text() for safety, .attr('title', ...) for tooltips on truncated cells
+    row.append($("<td></td>").text(timestampStr));
+    row.append($("<td class='text-truncate'></td>").attr('title', item.prompt || "").text(item.prompt || ""));
+    row.append($("<td class='text-truncate'></td>").attr('title', item.aiResponse || "").text(item.aiResponse || ""));
+    row.append($("<td></td>").text(item.feedbackType || ""));
+    row.append($("<td class='text-truncate'></td>").attr('title', item.reason || "").text(item.reason || ""));
+    row.append($("<td></td>").text(ackText));
+    row.append($("<td class='text-truncate'></td>").attr('title', adminReview.analysisNotes || "").text(adminReview.analysisNotes || ""));
+    row.append($("<td class='text-truncate'></td>").attr('title', adminReview.responseToUser || "").text(adminReview.responseToUser || ""));
+    row.append($("<td class='text-truncate'></td>").attr('title', adminReview.actionTaken || "").text(adminReview.actionTaken || ""));
+
+    // View Details button
+    const viewBtn = $("<button class='btn btn-sm btn-primary view-details-btn'></button>")
+                    .attr('data-id', item.id)
+                    .attr('title', 'View Full Details')
+                    .html('<i class="bi bi-eye-fill"></i>'); // Use icon for 'View'
+                    // .text('View'); // Or use text
+    row.append($("<td class='text-center'></td>").append(viewBtn));
+
+    tableBody.append(row);
+  }
+
+  // --- PAGINATION CONTROL RENDERING (Consistent function) ---
+  function renderPaginationControls(page, pageSize, totalCount) {
+        paginationContainer.empty();
+        const totalPages = Math.ceil(totalCount / pageSize);
+        if (totalPages <= 1) return;
+        const createPageLink = (pageNum, text, isDisabled = false, isActive = false) => {
+            const li = $('<li>').addClass('page-item');
+            if (isDisabled) li.addClass('disabled'); if (isActive) li.addClass('active');
+            const a = $('<a>').addClass('page-link').attr('href', '#').html(text);
+            if (!isDisabled && !isActive) { a.on('click', (e) => { e.preventDefault(); currentPage = pageNum; fetchMyFeedback(); }); }
+            else if (isActive) { li.attr('aria-current', 'page'); }
+            li.append(a); return li;
+        };
+        const ul = $('<ul>').addClass('pagination pagination-sm mb-0');
+        ul.append(createPageLink(page - 1, '«', page <= 1));
+        const maxPagesToShow = 5; let startPage = 1, endPage = totalPages;
+        if (totalPages > maxPagesToShow) { let mid = Math.floor(maxPagesToShow / 2); if (page > mid) startPage = page - mid; endPage = startPage + maxPagesToShow - 1; if (endPage > totalPages) { endPage = totalPages; startPage = endPage - maxPagesToShow + 1; } }
+        if (startPage > 1) { ul.append(createPageLink(1, '1')); if (startPage > 2) ul.append($('<li>').addClass('page-item disabled').html('<span class="page-link">...</span>')); }
+        for (let p = startPage; p <= endPage; p++) { ul.append(createPageLink(p, p, false, p === page)); }
+        if (endPage < totalPages) { if (endPage < totalPages - 1) ul.append($('<li>').addClass('page-item disabled').html('<span class="page-link">...</span>')); ul.append(createPageLink(totalPages, totalPages)); }
+        ul.append(createPageLink(page + 1, '»', page >= totalPages));
+        paginationContainer.append(ul);
+    }
+
+  // --- MODAL HANDLING ---
+  function openDetailsModal(feedbackId) {
+    // Find the feedback item from the data stored for the current page
+    const item = feedbackItemsOnPage.find(f => f.id == feedbackId);
+    if (!item) {
+        console.error("Could not find feedback data for ID:", feedbackId);
+        alert("Error: Could not load feedback details.");
+        return;
+    }
+
+    const adminReview = item.adminReview || {};
+    const timestampStr = item.timestamp ? new Date(item.timestamp).toLocaleString() : "N/A";
+
+    // Populate modal fields using jQuery's .text() for safety
+    $("#detailTimestamp").text(timestampStr);
+    $("#detailPrompt").text(item.prompt || "N/A");
+    $("#detailAiResponse").text(item.aiResponse || "N/A");
+    $("#detailFeedbackType").text(item.feedbackType || "N/A");
+    $("#detailReason").text(item.reason || "N/A");
+    $("#detailAcknowledged").text(adminReview.acknowledged ? "Yes" : "No");
+    $("#detailAnalysisNotes").text(adminReview.analysisNotes || "N/A");
+    $("#detailResponseToUser").text(adminReview.responseToUser || "N/A");
+    $("#detailActionTaken").text(adminReview.actionTaken || "N/A");
+
+    viewModal.show();
+  }
+
+  // --- EVENT LISTENERS ---
+  $(document).ready(function() {
+    // Initial fetch
+    pageSize = parseInt(pageSizeSelect.val(), 10);
+    fetchMyFeedback();
+
+    // Page size change
+    pageSizeSelect.on("change", function() {
+      pageSize = parseInt($(this).val(), 10);
+      currentPage = 1; // Reset to first page
+      fetchMyFeedback();
+    });
+
+    // Filter apply button
+    applyFiltersBtn.on('click', function() {
+        currentPage = 1;
+        fetchMyFeedback();
+    });
+
+     // Filter clear button
+    clearFiltersBtn.on('click', function() {
+        filterTypeSelect.val('');
+        filterAckSelect.val('');
+        currentPage = 1;
+        fetchMyFeedback();
+    });
+
+    // Use event delegation for View buttons in the table body
+    tableBody.on("click", ".view-details-btn", function() {
+        const feedbackId = $(this).data("id");
+        if(feedbackId) {
+            openDetailsModal(feedbackId);
+        }
+    });
+  });
+</script>
+{% endblock %}

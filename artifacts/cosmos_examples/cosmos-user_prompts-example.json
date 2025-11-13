@@ -1,0 +1,9 @@
+{
+    "id": "<prompt-id>",
+    "user_id": "<user-id>",
+    "name": "Formatted output",
+    "content": "Please, use the following format to generate your response:\n\n# Title\nTwo sentence abstract\n\n## Header\nDetails\n* bullet points when necessary\n\n## Summary",
+    "type": "user_prompt",
+    "created_at": "<iso-created-timestamp>",
+    "updated_at": "<iso-updated-timestamp>"
+}

@@ -1,0 +1,47 @@
+{
+    "id": "<message-id>",
+    "conversation_id": "<conversation-id>",
+    "role": "assistant",
+    "content": "Code review can be conducted using an AI-powered framework that scans code for quality and security issues. Here’s a systematic approach...",
+    "timestamp": "<iso-timestamp>",
+    "augmented": true,
+    "hybrid_citations": [
+        {
+            "file_name": "AI-based_VB.NET_Code_Review_Framework.docx",
+            "citation_id": "<citation-id-3>",
+            "page_number": 3,
+            "chunk_id": "3",
+            "chunk_sequence": 3,
+            "score": 0.0322,
+            "group_id": null,
+            "version": 1,
+            "classification": "Pending"
+        },
+        {
+            "file_name": "AI-based_VB.NET_Code_Review_Framework.docx",
+            "citation_id": "<citation-id-2>",
+            "page_number": 2,
+            "chunk_id": "2",
+            "chunk_sequence": 2,
+            "score": 0.0333,
+            "group_id": null,
+            "version": 1,
+            "classification": "Pending"
+        },
+        {
+            "file_name": "AI-based_VB.NET_Code_Review_Framework.docx",
+            "citation_id": "<citation-id-1>",
+            "page_number": 1,
+            "chunk_id": "1",
+            "chunk_sequence": 1,
+            "score": 0.0327,
+            "group_id": null,
+            "version": 1,
+            "classification": "Pending"
+        }
+    ],
+    "hybridsearch_query": "how to review code?",
+    "web_search_citations": [],
+    "user_message": "how to review code?",
+    "model_deployment_name": "gpt-4o"
+}
