@@ -1075,3 +1075,37 @@ ol {
   cursor: pointer;
   font-weight: 600;
 }
+/* =========================================================
+    layout tighten / wide chat restore
+   ========================================================= */
+
+/* bring panes flush so chat can take full width */
+#left-pane {
+  margin-right: 0 !important;
+}
+#right-pane {
+  margin-left: 0 !important;
+}
+
+/* shared chat width variables */
+:root {
+  --chat-side-gutter: 1rem;
+  --chat-max-wide: 1400px;
+  --chat-fluid-pct: 98%;
+}
+
+/* make chat messages/cards use the wide layout */
+#chatbox {
+  padding-left: var(--chat-side-gutter);
+  padding-right: var(--chat-side-gutter);
+}
+#chatbox .message-bubble,
+#chatbox .message,
+#chatbox .card,
+#chatbox .ai-message,
+#chatbox .user-message {
+  margin-left: auto;
+  margin-right: auto;
+  width: min(var(--chat-max-wide), var(--chat-fluid-pct)) !important;
+  max-width: none !important;
+}
