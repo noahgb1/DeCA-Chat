@@ -3,6 +3,7 @@ import builtins
 import logging
 import pickle
 import json
+import os
 
 from semantic_kernel import Kernel
 from semantic_kernel_loader import initialize_semantic_kernel
@@ -63,6 +64,8 @@ app.config['EXECUTOR_TYPE'] = EXECUTOR_TYPE
 app.config['EXECUTOR_MAX_WORKERS'] = EXECUTOR_MAX_WORKERS
 executor = Executor()
 executor.init_app(app)
+# Ensure initial filesystem session path is writable when Session(app) first initializes
+app.config['SESSION_FILE_DIR'] = os.environ.get('SESSION_FILE_DIR', '/tmp/flask_session')
 app.config['SESSION_TYPE'] = SESSION_TYPE
 app.config['VERSION'] = VERSION
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -519,4 +522,3 @@ if __name__ == '__main__':
         # Production
         port = int(os.environ.get("PORT", 5000))
         app.run(host="0.0.0.0", port=port, debug=False)
-
