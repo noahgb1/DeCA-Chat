@@ -1,8 +1,8 @@
 // static/js/chat/chat-layout.js
 
 // Constants for user settings keys
-const USER_SETTINGS_KEY_LAYOUT = 'chatLayout';
-const USER_SETTINGS_KEY_SPLIT = 'chatSplitSizes';
+const USER_SETTINGS_KEY_LAYOUT = 'layoutPreference';
+const USER_SETTINGS_KEY_SPLIT = 'splitSizesPreference';
 
 // DOM elements
 const leftPane = document.getElementById('left-pane');
@@ -12,7 +12,7 @@ const splitContainer = document.getElementById('split-container'); // Might not 
 
 // Track current layout state
 let currentLayout = 'split'; // Default to split view
-let currentSplitSizes = [25, 75]; // Default split sizes [left, right]
+let currentSplitSizes = [18, 82]; // Default split sizes [left, right]
 let splitInstance = null; // Will hold the Split.js instance
 
 // --- API Function for User Settings ---
@@ -64,7 +64,7 @@ export async function loadUserSettings() {
 
     // Apply loaded settings
     currentLayout = settings[USER_SETTINGS_KEY_LAYOUT] || 'split'; // Default to 'split'
-    currentSplitSizes = settings[USER_SETTINGS_KEY_SPLIT] || [25, 75]; // Default sizes
+    currentSplitSizes = settings[USER_SETTINGS_KEY_SPLIT] || [18, 82]; // Default sizes
 
     console.log(`Applying initial layout: ${currentLayout}, sizes: ${currentSplitSizes}`);
     applyLayout(currentLayout, false); // Apply layout without saving again

@@ -107,6 +107,8 @@ def add_security_headers(response):
     return response
 
 @app.route("/how-to")
+@login_required
+@user_required
 def how_to():
     return render_template("how_to.html")
 

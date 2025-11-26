@@ -121,7 +121,7 @@ CLIENT_ID = os.getenv("CLIENT_ID")
 APP_URI = f"api://{CLIENT_ID}"
 CLIENT_SECRET = os.getenv("MICROSOFT_PROVIDER_AUTHENTICATION_SECRET")
 TENANT_ID = os.getenv("TENANT_ID")
-SCOPE = ["User.Read", "User.ReadBasic.All", "People.Read.All", "Group.Read.All", "User.Read.All"] # Adjust scope according to your needs
+SCOPE = ["User.Read", "User.ReadBasic.All", "People.Read.All", "Group.Read.All", "User.Read.All", "Directory.Read.All"] # Adjust scope according to your needs
 MICROSOFT_PROVIDER_AUTHENTICATION_SECRET = os.getenv("MICROSOFT_PROVIDER_AUTHENTICATION_SECRET")    
 
 OIDC_METADATA_URL = f"https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration"

@@ -1123,7 +1123,7 @@ if (modelSelect) {
 }
 
 /* ===========================
-   Finish-the-word Ghost Suggestion
+   Ghost Text Prediction 
    =========================== */
 (() => {
   const inputEl = userInput;
@@ -1133,63 +1133,47 @@ if (modelSelect) {
 
   let debounceId = null;
   let currentSuggestion = "";
-  let lastPrefixSent = "";
+  let lastFragmentSent = "";
   let lastRequestId = 0;
-  const DEBOUNCE_MS = 250;
+  let isComposing = false;
+
+  const DEBOUNCE_MS = 200;
+  const MAX_SUGGESTION_CHARS = 24;
 
   const atEnd = (el) =>
     el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
 
-  function renderOverlay(prefix, suggestion) {
-    // suggestion here is a *suffix* (no spaces) — render right after typed text
-    const typedSpan = `<span class="typed" style="color: transparent;">${escapeHtml(
-      prefix
-    )}</span>`;
-    const sugSpan = suggestion
-      ? `<span class="suggestion" style="color:#9aa0a6;">${escapeHtml(
-          suggestion
-        )}</span>`
-      : "";
-    overlayEl.innerHTML = typedSpan + sugSpan;
-    overlayEl.style.visibility = prefix || suggestion ? "visible" : "hidden";
+  function getFragment(str) {
+    // Current trailing "word" fragment (no whitespace)
+    const m = (str || "").match(/([^\s]+)$/);
+    return m ? m[1] : "";
   }
 
-  async function fetchSuggestion(prefix) {
-    const myReqId = ++lastRequestId;
-    try {
-      const resp = await fetch("/api/predict-next-word", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prefix }),
-      });
-      if (!resp.ok) return "";
-      const data = await resp.json();
-      // discard stale response
-      if (myReqId !== lastRequestId) return "";
-      return typeof data?.suggestion === "string" ? data.suggestion : "";
-    } catch {
-      return "";
-    }
+  function syncOverlayMetrics() {
+    // Mirror textarea visual metrics so text lines up
+    const cs = window.getComputedStyle(inputEl);
+    overlayEl.style.font = cs.font; // covers family/size/weight/etc
+    overlayEl.style.fontFamily = cs.fontFamily;
+    overlayEl.style.fontSize = cs.fontSize;
+    overlayEl.style.lineHeight = cs.lineHeight;
+    overlayEl.style.letterSpacing = cs.letterSpacing;
+    overlayEl.style.paddingTop = cs.paddingTop;
+    overlayEl.style.paddingRight = cs.paddingRight;
+    overlayEl.style.paddingBottom = cs.paddingBottom;
+    overlayEl.style.paddingLeft = cs.paddingLeft;
+    overlayEl.style.whiteSpace = "pre-wrap";
+    overlayEl.style.wordBreak = "break-word";
   }
 
-  function shouldQuery(prefix) {
-    if (!prefix) return false;
-
-    // if user just typed space/newline, there's no word to finish
-    const lastChar = prefix[prefix.length - 1];
-    if (/\s/.test(lastChar)) return false;
-
-    // current fragment = chars since last whitespace
-    const parts = prefix.split(/\s+/);
-    const fragment = parts[parts.length - 1] || "";
-
-    // don't bother on very short fragments
-    if (fragment.length < 2) return false;
-
-    // don't re-send exact same prefix
-    if (prefix === lastPrefixSent) return false;
-
-    return true;
+  function renderOverlay(prefix, suggestionSuffix) {
+    // Render the typed text in transparent color to "reserve" space,
+    // then show only the suggestion suffix.
+    const safePrefix = escapeHtml(prefix || "");
+    const safeSuggestion = escapeHtml(suggestionSuffix || "");
+    overlayEl.innerHTML =
+      `<span class="typed" style="color: transparent;">${safePrefix}</span>` +
+      (safeSuggestion ? `<span class="suggestion">${safeSuggestion}</span>` : "");
+    overlayEl.style.visibility = suggestionSuffix ? "visible" : "hidden";
   }
 
   function clearSuggestion() {
@@ -1197,32 +1181,94 @@ if (modelSelect) {
     renderOverlay(inputEl.value || "", "");
   }
 
+  function shouldQuery(prefix) {
+    if (!prefix || isComposing) return false;
+    if (!atEnd(inputEl)) return false;
+
+    // If last character is whitespace, we're between words — don't predict
+    const lastChar = prefix[prefix.length - 1];
+    if (/\s/.test(lastChar)) return false;
+
+    const fragment = getFragment(prefix);
+    if (fragment.length < 2) return false;           // require minimal signal
+    if (fragment === lastFragmentSent) return false; // avoid same-fragment spam
+    return true;
+  }
+
+  async function fetchSuggestion(prefix, fragment) {
+    const myReqId = ++lastRequestId;
+    try {
+      const resp = await fetch("/api/predict-next-word", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Keep API compatible: backend expects { prefix }
+        body: JSON.stringify({ prefix }),
+      });
+      if (!resp.ok) return "";
+      const data = await resp.json();
+
+      // Discard stale responses
+      if (myReqId !== lastRequestId) return "";
+
+      let s = typeof data?.suggestion === "string" ? data.suggestion : "";
+      if (!s) return "";
+
+      // Show only the suffix beyond the current fragment
+      if (s.toLowerCase().startsWith(fragment.toLowerCase())) {
+        s = s.slice(fragment.length);
+      }
+
+      // Enforce: no whitespace, bounded length
+      if (!s || /\s/.test(s)) return "";
+      if (s.length > MAX_SUGGESTION_CHARS) s = s.slice(0, MAX_SUGGESTION_CHARS);
+
+      return s;
+    } catch {
+      return "";
+    }
+  }
+
   function maybeQuery() {
     const prefix = inputEl.value || "";
-    if (!atEnd(inputEl) || !shouldQuery(prefix)) {
-      currentSuggestion = "";
+
+    if (!shouldQuery(prefix)) {
       renderOverlay(prefix, "");
       return;
     }
 
+    const fragment = getFragment(prefix);
     clearTimeout(debounceId);
     debounceId = setTimeout(async () => {
-      lastPrefixSent = prefix;
-      const suggestion = await fetchSuggestion(prefix);
-      currentSuggestion = suggestion || "";
+      lastFragmentSent = fragment;
+      const suffix = await fetchSuggestion(prefix, fragment);
+      currentSuggestion = suffix || "";
       renderOverlay(prefix, currentSuggestion);
     }, DEBOUNCE_MS);
   }
 
-  inputEl.addEventListener("input", maybeQuery);
+  // Keep overlay aligned with textarea scrolling (multi-line)
+  function syncOverlayScroll() {
+    overlayEl.style.transform = `translateY(-${inputEl.scrollTop}px)`;
+  }
+
+  // Events
+  inputEl.addEventListener("input", () => {
+    const v = inputEl.value || "";
+
+    // Reset fragment tracking when a word is completed
+    if (/\s$/.test(v)) lastFragmentSent = "";
+
+    // Update overlay immediately with whatever suggestion we have
+    renderOverlay(v, atEnd(inputEl) ? currentSuggestion : "");
+    syncOverlayScroll();
+    maybeQuery();
+  });
+
+  inputEl.addEventListener("scroll", syncOverlayScroll);
 
   inputEl.addEventListener("keyup", (e) => {
     if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
-      if (!atEnd(inputEl)) currentSuggestion = "";
-      renderOverlay(
-        inputEl.value || "",
-        atEnd(inputEl) ? currentSuggestion : ""
-      );
+      renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
     }
   });
 
@@ -1234,28 +1280,33 @@ if (modelSelect) {
     renderOverlay(inputEl.value || "", atEnd(inputEl) ? currentSuggestion : "");
   });
 
+  // IME composition should suppress predictions
+  inputEl.addEventListener("compositionstart", () => {
+    isComposing = true;
+    renderOverlay(inputEl.value || "", "");
+  });
+  inputEl.addEventListener("compositionend", () => {
+    isComposing = false;
+    maybeQuery();
+  });
+
   inputEl.addEventListener("keydown", (e) => {
-    // accept suggestion (suffix)
-    if (
-      currentSuggestion &&
-      atEnd(inputEl) &&
-      (e.key === "Tab" || e.key === "ArrowRight")
-    ) {
+    // Accept suggestion
+    if (currentSuggestion && atEnd(inputEl) && (e.key === "Tab" || e.key === "ArrowRight")) {
       e.preventDefault();
-      const base = inputEl.value || "";
-      // for finish-the-word we do NOT insert a space — just append suffix
-      inputEl.value = base + currentSuggestion;
+      inputEl.value = (inputEl.value || "") + currentSuggestion;
       currentSuggestion = "";
+      lastFragmentSent = "";
       renderOverlay(inputEl.value, "");
       inputEl.dispatchEvent(new Event("input", { bubbles: true }));
       return;
     }
-    // clear on escape
+    // Clear on escape
     if (e.key === "Escape") {
       clearSuggestion();
       return;
     }
-    // clear on send
+    // Clear on send (Enter without Shift)
     if (e.key === "Enter" && !e.shiftKey) {
       clearSuggestion();
     }
@@ -1265,5 +1316,9 @@ if (modelSelect) {
     sendBtn.addEventListener("click", clearSuggestion);
   }
 
+  // Initial sync and render
+  syncOverlayMetrics();
+  window.addEventListener("resize", syncOverlayMetrics);
   renderOverlay(inputEl.value || "", "");
+  overlayEl.style.visibility = "hidden";
 })();
