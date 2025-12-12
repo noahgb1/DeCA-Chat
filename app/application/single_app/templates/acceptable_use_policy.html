@@ -1,0 +1,64 @@
+<!-- templates/acceptable_use_policy.html -->
+
+{% extends "base.html" %}
+{% block title %}
+  Acceptable Use Policy - {{ app_settings.app_title }}
+{% endblock %}
+{% block content %}
+
+<div class="container">
+  <h1>Acceptable Use Policy</h1>
+  <div class="alert alert-info" id="example-notice">
+      This is an example. 
+      Modify this template to create your own Acceptable Use Policy or 
+      Update the Landing Page content in the application settings 
+      to link to your own Acceptable Use Policy.
+  </div>
+  <p>Last Updated: January 30, 2025</p>
+
+  <p>
+    Welcome to our AI-powered chat service. By using this service, 
+    you agree to follow this Acceptable Use Policy (AUP) to ensure 
+    a safe and respectful experience for all users.
+  </p>
+
+  <h2>1. Prohibited Activities</h2>
+  <p>You must not use this service to:</p>
+  <ul>
+    <li>Engage in illegal, fraudulent, or harmful activities.</li>
+    <li>Distribute, promote, or encourage violence, hate speech, or discrimination.</li>
+    <li>Share offensive, explicit, or inappropriate content.</li>
+    <li>Impersonate individuals, companies, or organizations.</li>
+    <li>Use the AI to generate misleading or deceptive information.</li>
+    <li>Spam, harass, or disrupt the experience for others.</li>
+    <li>Attempt to reverse-engineer, hack, or exploit the AI system.</li>
+  </ul>
+
+  <h2>2. Data Privacy</h2>
+  <p>We respect your privacy. Please do not share personal, confidential, or sensitive information while using this service.</p>
+
+  <h2>3. Responsible AI Use</h2>
+  <p>
+    The AI assistant provides information based on patterns in data and
+    should not be considered a replacement for professional advice (legal,
+    medical, financial, etc.). Use AI-generated content responsibly.
+  </p>
+
+  <h2>4. Enforcement</h2>
+  <p>
+    Violations of this policy may result in temporary or permanent
+    suspension of access to the service.
+  </p>
+
+  <h2>5. Changes to This Policy</h2>
+  <p>
+    We may update this AUP from time to time. Continued use of the service
+    after any modifications constitutes your acceptance of the new terms.
+  </p>
+
+  <p>
+    <strong>By using this service, you agree to this Acceptable Use Policy.</strong>
+  </p>
+
+</div>
+{% endblock %}
